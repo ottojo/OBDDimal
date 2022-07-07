@@ -5,7 +5,6 @@ use rand::Rng;
 use rustc_hash::FxHashMap as HashMap;
 use rustc_hash::FxHashSet as HashSet;
 
-
 mod sat;
 
 pub const ZERO: DDNode = DDNode {
@@ -242,7 +241,6 @@ impl DDManager {
             None => self.add_node(*node), // No existing node found -> create new
         }
     }
-
 
     //------------------------------------------------------------------------//
     // Constants
