@@ -6,7 +6,7 @@ fn main() {
     // let mut instance = dimacs::parse_dimacs("examples/cerf.dimacs");
     // let mut instance = dimacs::parse_dimacs("examples/sandwich.dimacs");
     // let mut instance = dimacs::parse_dimacs("examples/berkeleydb.dimacs");
-    let mut instance = dimacs::parse_dimacs("examples/busybox.dimacs");
+    let mut instance = dimacs::parse_dimacs("examples/berkeleydb.dimacs");
 
     // let order = static_ordering::rand(&instance);
 

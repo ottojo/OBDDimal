@@ -1,16 +1,57 @@
 use super::bdd_node::{DDNode, NodeID, VarID};
 use super::dimacs::Instance;
 
+use rand::Rng;
 use rustc_hash::FxHashMap as HashMap;
 use rustc_hash::FxHashSet as HashSet;
 
-use rand::Rng;
-
 mod sat;
 
+pub const ZERO: DDNode = DDNode {
+    id: NodeID(0),
+    var: VarID(0),
+    low: NodeID(0),
+    high: NodeID(0),
+};
+
+pub const ONE: DDNode = DDNode {
+    id: NodeID(1),
+    var: VarID(0),
+    low: NodeID(1),
+    high: NodeID(1),
+};
+
+fn normalize_ite_args(mut f: NodeID, mut g: NodeID, mut h: NodeID) -> (NodeID, NodeID, NodeID) {
+    if f == g {
+        g = ONE.id;
+    } else if f == h {
+        h = ZERO.id
+    }
+
+    fn order(a: NodeID, b: NodeID) -> (NodeID, NodeID) {
+        // TODO: "Efficient implementation of a BDD package" orders by top variable first, is this relevant?
+        if a < b {
+            (a, b)
+        } else {
+            (b, a)
+        }
+    }
+
+    if g == ONE.id {
+        (f, h) = order(f, h);
+    }
+    if h == ZERO.id {
+        (f, g) = order(f, g);
+    }
+
+    (f, g, h)
+}
+
 pub struct DDManager {
+    /// Node List
     pub nodes: HashMap<NodeID, DDNode>,
     order: Vec<VarID>,
+    /// Unique Table for each variable
     var2nodes: Vec<HashSet<DDNode>>,
     /// Computed Table: ite(f,g,h) cache
     c_table: HashMap<(NodeID, NodeID, NodeID), NodeID>,
@@ -88,6 +129,14 @@ impl DDManager {
 
             bdd = man.and(cbdd, bdd);
 
+            /*
+            println!(
+                "Node list contains {} nodes, {} of which are unique",
+                man.nodes.len(),
+                man.unique_nodes()
+            );
+            */
+
             man.purge_retain(bdd);
 
             log::info!(
@@ -98,29 +147,24 @@ impl DDManager {
             );
             n += 1;
         }
-
         (man, bdd)
+    }
+
+    pub fn unique_nodes(&self) -> usize {
+        let mut uniques = HashSet::default();
+        for (_, value) in self.nodes.iter() {
+            uniques.insert(value);
+        }
+        uniques.len()
     }
 
     /// Initialize the BDD with zero and one constant nodes
     fn bootstrap(&mut self) {
-        let zero = DDNode {
-            id: NodeID(0),
-            var: VarID(0),
-            low: NodeID(0),
-            high: NodeID(0),
-        };
-        let one = DDNode {
-            id: NodeID(1),
-            var: VarID(0),
-            low: NodeID(1),
-            high: NodeID(1),
-        };
-
-        self.add_node(zero);
-        self.add_node(one);
+        self.add_node(ZERO);
+        self.add_node(ONE);
     }
 
+    /// TODO: Document
     fn ensure_order(&mut self, target: usize) {
         let old_size = self.order.len();
 
@@ -141,8 +185,18 @@ impl DDManager {
         log::info!("RESIZE: {:?}", self.order);
     }
 
+    /// Insert Node. ID is assigned for nonterminal nodes (var != 0).
+    /// This does not check the unique table, you should do so before using!
     fn add_node(&mut self, mut node: DDNode) -> NodeID {
-        if node.id == NodeID(0) && node.var != VarID(0) {
+        if node.id.0 != 0 && node.id.0 != 1 {
+            panic!("Adding node With ID > 1: {:?}", node);
+        }
+
+        if node.var.0 != 0 && node.id.0 != 0 {
+            panic!("Trying to add node with predefined ID that is not a terminal node");
+        }
+
+        if node.var != VarID(0) {
             // Assign new node ID
             let mut id = NodeID(rand::thread_rng().gen::<u32>());
 
@@ -164,21 +218,27 @@ impl DDManager {
 
         self.ensure_order(var.0 as usize);
 
-        self.var2nodes[var.0 as usize].insert(node);
+        let was_inserted = self.var2nodes[var.0 as usize].insert(node);
+        if !was_inserted {
+            panic!("Node is already in unique table!");
+        }
 
         id
     }
 
+    /// Search for Node, create if it doesnt exist
     fn node_get_or_create(&mut self, node: &DDNode) -> NodeID {
         if self.var2nodes.len() <= (node.var.0 as usize) {
+            // Unique table does not contain any entries for this variable. Create new Node.
             return self.add_node(*node);
         }
 
+        // Lookup in variable-specific unique-table
         let res = self.var2nodes[node.var.0 as usize].get(node);
 
         match res {
-            Some(stuff) => stuff.id,
-            None => self.add_node(*node),
+            Some(stuff) => stuff.id,      // An existing node was found
+            None => self.add_node(*node), // No existing node found -> create new
         }
     }
 
@@ -279,12 +339,13 @@ impl DDManager {
     }
 
     fn ite(&mut self, f: NodeID, g: NodeID, h: NodeID) -> NodeID {
+        let (f, g, h) = normalize_ite_args(f, g, h);
         match (f, g, h) {
-            (_, NodeID(1), NodeID(0)) => f,           // ite(f,1,0)
-            (_, NodeID(0), NodeID(1)) => self.not(f), // ite(f,0,1)
-            (NodeID(1), _, _) => g,                   // ite(1,g,h)
-            (NodeID(0), _, _) => h,                   // ite(0,g,h)
-            (_, t, e) if t == e => t,                 // ite(f,g,g)
+            (_, NodeID(1), NodeID(0)) => f, // ite(f,1,0)
+            // (_, NodeID(0), NodeID(1)) => self.not(f), // ite(f,0,1) // Not a terminal case, since it's not free without complement edges!
+            (NodeID(1), _, _) => g, // ite(1,g,h)
+            (NodeID(0), _, _) => h, // ite(0,g,h)
+            //(_, t, e) if t == e => t, // ite(f,g,g) why is this relevant? should this not be in cache?
             (_, _, _) => {
                 let cache = self.c_table.get(&(f, g, h));
 
@@ -292,9 +353,9 @@ impl DDManager {
                     return *cached;
                 }
 
-                let fnode = &self.nodes.get(&f).unwrap();
-                let gnode = &self.nodes.get(&g).unwrap();
-                let hnode = &self.nodes.get(&h).unwrap();
+                let fnode = self.nodes.get(&f).unwrap();
+                let gnode = self.nodes.get(&g).unwrap();
+                let hnode = self.nodes.get(&h).unwrap();
 
                 let top = self.min_by_order(fnode.var, gnode.var, hnode.var);
 
@@ -306,8 +367,17 @@ impl DDManager {
                 let gxf = gnode.restrict(top, &self.order, false);
                 let hxf = hnode.restrict(top, &self.order, false);
 
-                let high = self.ite(fxt, gxt, hxt);
-                let low = self.ite(fxf, gxf, hxf);
+                let high = if gxt == hxt {
+                    gxt
+                } else {
+                    self.ite(fxt, gxt, hxt)
+                };
+
+                let low = if gxf == hxf {
+                    gxf
+                } else {
+                    self.ite(fxf, gxf, hxf)
+                };
 
                 if low == high {
                     return low;
