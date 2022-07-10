@@ -327,7 +327,7 @@ impl DDManager {
             (_, NodeID(1), NodeID(0)) => f, // ite(f,1,0)
             (NodeID(1), _, _) => g,         // ite(1,g,h)
             (NodeID(0), _, _) => h,         // ite(0,g,h)
-            (_, t, e) if t == e => t, // ite(f,g,g) why is this relevant? should this not be in cache?
+            (_, t, e) if t == e => t,       // ite(f,g,g)
             (_, _, _) => {
                 let cache = self.c_table.get(&(f, g, h));
 
@@ -350,7 +350,6 @@ impl DDManager {
                 let hxf = hnode.restrict(top, &self.order, false);
 
                 let high = self.ite(fxt, gxt, hxt);
-
                 let low = self.ite(fxf, gxf, hxf);
 
                 if low == high {
