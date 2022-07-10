@@ -129,14 +129,6 @@ impl DDManager {
 
             bdd = man.and(cbdd, bdd);
 
-            /*
-            println!(
-                "Node list contains {} nodes, {} of which are unique",
-                man.nodes.len(),
-                man.unique_nodes()
-            );
-            */
-
             man.purge_retain(bdd);
 
             log::info!(
@@ -150,21 +142,12 @@ impl DDManager {
         (man, bdd)
     }
 
-    pub fn unique_nodes(&self) -> usize {
-        let mut uniques = HashSet::default();
-        for (_, value) in self.nodes.iter() {
-            uniques.insert(value);
-        }
-        uniques.len()
-    }
-
     /// Initialize the BDD with zero and one constant nodes
     fn bootstrap(&mut self) {
         self.add_node(ZERO);
         self.add_node(ONE);
     }
 
-    /// TODO: Document
     fn ensure_order(&mut self, target: usize) {
         let old_size = self.order.len();
 
@@ -342,10 +325,9 @@ impl DDManager {
         let (f, g, h) = normalize_ite_args(f, g, h);
         match (f, g, h) {
             (_, NodeID(1), NodeID(0)) => f, // ite(f,1,0)
-            // (_, NodeID(0), NodeID(1)) => self.not(f), // ite(f,0,1) // Not a terminal case, since it's not free without complement edges!
-            (NodeID(1), _, _) => g, // ite(1,g,h)
-            (NodeID(0), _, _) => h, // ite(0,g,h)
-            //(_, t, e) if t == e => t, // ite(f,g,g) why is this relevant? should this not be in cache?
+            (NodeID(1), _, _) => g,         // ite(1,g,h)
+            (NodeID(0), _, _) => h,         // ite(0,g,h)
+            (_, t, e) if t == e => t, // ite(f,g,g) why is this relevant? should this not be in cache?
             (_, _, _) => {
                 let cache = self.c_table.get(&(f, g, h));
 
@@ -367,17 +349,9 @@ impl DDManager {
                 let gxf = gnode.restrict(top, &self.order, false);
                 let hxf = hnode.restrict(top, &self.order, false);
 
-                let high = if gxt == hxt {
-                    gxt
-                } else {
-                    self.ite(fxt, gxt, hxt)
-                };
+                let high = self.ite(fxt, gxt, hxt);
 
-                let low = if gxf == hxf {
-                    gxf
-                } else {
-                    self.ite(fxf, gxf, hxf)
-                };
+                let low = self.ite(fxf, gxf, hxf);
 
                 if low == high {
                     return low;
