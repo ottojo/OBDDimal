@@ -19,7 +19,8 @@ fn main() {
 
     let graphviz = man.graphviz(bdd);
     fs::write("t.dot", &graphviz).unwrap();
- //   log::debug!("{}", graphviz);
+    //   log::debug!("{}", graphviz);
+    log::info!("function: {:?}", bdd);
 
     println!("Starting #SAT");
     println!("{:?}", man.sat_count(bdd));

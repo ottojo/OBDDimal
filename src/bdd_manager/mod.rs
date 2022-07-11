@@ -1,3 +1,5 @@
+use std::fs;
+
 use super::bdd_node::{DDNode, NodeID, VarID};
 use super::dimacs::Instance;
 
@@ -157,6 +159,8 @@ impl DDManager {
             man.order = o;
         }
 
+        log::info!("Initial order: {:?}", man.order);
+
         let mut bdd = man.one();
 
         let mut n = 1;
@@ -190,7 +194,17 @@ impl DDManager {
         }
 
         // TODO: Actual DVO here (or elsewhere)
+        //
+        let graphviz = man.graphviz(bdd);
+        fs::write("before_1.dot", &graphviz).unwrap();
         man.swap(VarID(1), VarID(2));
+        let graphviz = man.graphviz(bdd);
+        fs::write("after_1.dot", &graphviz).unwrap();
+        man.swap(VarID(2), VarID(1));
+        let graphviz = man.graphviz(bdd);
+        fs::write("after_2.dot", &graphviz).unwrap();
+
+        log::info!("Final order: {:?}", man.order);
 
         Ok((man, bdd))
     }
@@ -215,25 +229,38 @@ impl DDManager {
             .values()
             .cloned()
             .collect::<Vec<NodeID>>();
+        log::debug!("Replacing {} nodes", ids.len());
         for id in ids {
             let f_id = id;
+            log::debug!("Replacing node {:?}", f_id);
+
             let f_node = self.nodes[&f_id];
+            self.var2nodes[a.0 as usize].remove_entry(&(f_node.var, f_node.low, f_node.high));
+
+            // TODO: Var ID 0? -> Self reference?
 
             let f_1_id = f_node.high;
+            log::debug!("f_1 is {:?}", f_1_id);
             let f_1_node = self.nodes[&f_1_id];
             let (f_11_id, f_10_id) = if f_1_node.var == b {
                 (f_1_node.high, f_1_node.low)
             } else {
                 (f_1_id, f_1_id)
             };
+            log::debug!("f_11 is {:?}", f_11_id);
+            log::debug!("f_10 is {:?}", f_10_id);
 
             let f_0_id = f_node.low;
+            log::debug!("f_0 is {:?}", f_0_id);
             let f_0_node = self.nodes[&f_0_id];
             let (f_01_id, f_00_id) = if f_0_node.var == b {
                 (f_0_node.high, f_0_node.low)
             } else {
                 (f_0_id, f_0_id)
             };
+
+            log::debug!("f_01 is {:?}", f_01_id);
+            log::debug!("f_00 is {:?}", f_00_id);
 
             let new_then_id = self.node_get_or_create(&DDNode {
                 id: NodeID(0),
@@ -252,8 +279,15 @@ impl DDManager {
             self.nodes.get_mut(&f_id).unwrap().high = new_then_id;
             self.nodes.get_mut(&f_id).unwrap().low = new_else_id;
             self.c_table.clear();
+
+            // Update unique table
+            self.var2nodes[b.0 as usize].insert((b, new_else_id, new_then_id), f_id);
+
+            log::debug!("Replaced node {:?} with {:?}", f_id, self.nodes[&f_id]);
         }
         self.order.swap(a.0 as usize, b.0 as usize);
+        log::debug!("Order is now: {:?}", self.order);
+        // TODO: Minimize (apparently?)
     }
 
     /// Ensure order vec is valid up to specified variable
@@ -291,6 +325,8 @@ impl DDManager {
             panic!("Trying to add node with predefined ID that is not a terminal node");
         }
 
+        log::debug!("\tCreating new node");
+
         if node.var != VarID(0) {
             // Assign new node ID
             let mut id = NodeID(rand::thread_rng().gen::<u32>());
@@ -301,6 +337,7 @@ impl DDManager {
 
             node.id = id;
         }
+        log::debug!("\t\tassigned ID {:?}", node.id);
 
         let id = node.id;
         let var = node.var;
@@ -324,6 +361,12 @@ impl DDManager {
 
     /// Search for Node, create if it doesnt exist
     fn node_get_or_create(&mut self, node: &DDNode) -> NodeID {
+        log::debug!(
+            "node_get_or_create {:?} {:?} {:?}",
+            node.var,
+            node.low,
+            node.high
+        );
         if self.var2nodes.len() <= (node.var.0 as usize) {
             // Unique table does not contain any entries for this variable. Create new Node.
             return self.add_node(*node);
@@ -333,7 +376,10 @@ impl DDManager {
         let res = self.var2nodes[node.var.0 as usize].get(&(node.var, node.low, node.high));
 
         match res {
-            Some(nodeid) => *nodeid,      // An existing node was found
+            Some(nodeid) => {
+                log::debug!("\tFound already existing node: {:?}", nodeid);
+                *nodeid
+            } // An existing node was found
             None => self.add_node(*node), // No existing node found -> create new
         }
     }
