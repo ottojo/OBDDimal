@@ -54,8 +54,10 @@ pub struct DDManager {
     /// Variable ordering: order[v.0] is the depth of variable v in the tree
     /// See [check_order] for requirements
     order: Vec<u32>,
-    /// Unique Table for each variable
-    var2nodes: Vec<HashSet<DDNode>>,
+    /// Unique Table for each variable. This works because the Hash impl for
+    /// DDNode only hashes variable and high and low edge, not the ID.
+    /// node.var, node.low, node.high
+    var2nodes: Vec<HashMap<(VarID, NodeID, NodeID), NodeID>>,
     /// Computed Table: ite(f,g,h) cache
     c_table: HashMap<(NodeID, NodeID, NodeID), NodeID>,
 }
@@ -186,6 +188,10 @@ impl DDManager {
             );
             n += 1;
         }
+
+        // TODO: Actual DVO here (or elsewhere)
+        man.swap(VarID(1), VarID(2));
+
         Ok((man, bdd))
     }
 
@@ -193,6 +199,61 @@ impl DDManager {
     fn bootstrap(&mut self) {
         self.add_node(ZERO);
         self.add_node(ONE);
+    }
+
+    /// Swaps graph layers of variables a and b. Requires a to be directly above b.
+    fn swap(&mut self, a: VarID, b: VarID) {
+        log::debug!(
+            "Swapping variables {:?} and {:?} (layers {} and {})",
+            a,
+            b,
+            self.order[a.0 as usize],
+            self.order[b.0 as usize]
+        );
+        assert!(self.order[b.0 as usize] == self.order[a.0 as usize] + 1);
+        let ids = self.var2nodes[a.0 as usize]
+            .values()
+            .cloned()
+            .collect::<Vec<NodeID>>();
+        for id in ids {
+            let f_id = id;
+            let f_node = self.nodes[&f_id];
+
+            let f_1_id = f_node.high;
+            let f_1_node = self.nodes[&f_1_id];
+            let (f_11_id, f_10_id) = if f_1_node.var == b {
+                (f_1_node.high, f_1_node.low)
+            } else {
+                (f_1_id, f_1_id)
+            };
+
+            let f_0_id = f_node.low;
+            let f_0_node = self.nodes[&f_0_id];
+            let (f_01_id, f_00_id) = if f_0_node.var == b {
+                (f_0_node.high, f_0_node.low)
+            } else {
+                (f_0_id, f_0_id)
+            };
+
+            let new_then_id = self.node_get_or_create(&DDNode {
+                id: NodeID(0),
+                var: a,
+                low: f_01_id,
+                high: f_11_id,
+            });
+
+            let new_else_id = self.node_get_or_create(&DDNode {
+                id: NodeID(0),
+                var: a,
+                low: f_00_id,
+                high: f_10_id,
+            });
+            self.nodes.get_mut(&f_id).unwrap().var = b;
+            self.nodes.get_mut(&f_id).unwrap().high = new_then_id;
+            self.nodes.get_mut(&f_id).unwrap().low = new_else_id;
+            self.c_table.clear();
+        }
+        self.order.swap(a.0 as usize, b.0 as usize);
     }
 
     /// Ensure order vec is valid up to specified variable
@@ -247,13 +308,14 @@ impl DDManager {
         self.nodes.insert(id, node);
 
         while self.var2nodes.len() <= (var.0 as usize) {
-            self.var2nodes.push(HashSet::default())
+            self.var2nodes.push(HashMap::default())
         }
 
         self.ensure_order(var);
 
-        let was_inserted = self.var2nodes[var.0 as usize].insert(node);
-        if !was_inserted {
+        let was_inserted =
+            self.var2nodes[var.0 as usize].insert((node.var, node.low, node.high), id);
+        if was_inserted != None {
             panic!("Node is already in unique table!");
         }
 
@@ -268,10 +330,10 @@ impl DDManager {
         }
 
         // Lookup in variable-specific unique-table
-        let res = self.var2nodes[node.var.0 as usize].get(node);
+        let res = self.var2nodes[node.var.0 as usize].get(&(node.var, node.low, node.high));
 
         match res {
-            Some(stuff) => stuff.id,      // An existing node was found
+            Some(nodeid) => *nodeid,      // An existing node was found
             None => self.add_node(*node), // No existing node found -> create new
         }
     }
@@ -299,10 +361,10 @@ impl DDManager {
         };
 
         if self.var2nodes.len() > (var.0 as usize) {
-            let x = self.var2nodes[var.0 as usize].get(&v);
+            let x = self.var2nodes[var.0 as usize].get(&(v.var, v.low, v.high));
 
             if let Some(x) = x {
-                return x.id;
+                return *x;
             }
         }
 
@@ -318,10 +380,10 @@ impl DDManager {
         };
 
         if self.var2nodes.len() > (var.0 as usize) {
-            let x = self.var2nodes[var.0 as usize].get(&v);
+            let x = self.var2nodes[var.0 as usize].get(&(v.var, v.low, v.high));
 
             if let Some(x) = x {
-                return x.id;
+                return *x;
             }
         }
 
@@ -490,7 +552,7 @@ impl DDManager {
         garbage.retain(|&x, _| !keep.contains(&x) && x.0 > 1);
 
         for x in &garbage {
-            self.var2nodes[x.1.var.0 as usize].remove(x.1);
+            self.var2nodes[x.1.var.0 as usize].remove(&(x.1.var, x.1.low, x.1.high));
             self.nodes.remove(x.0);
         }
 

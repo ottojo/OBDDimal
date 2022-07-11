@@ -6,18 +6,20 @@ fn main() {
     env_logger::init();
 
     // let mut instance = dimacs::parse_dimacs("examples/cerf.dimacs");
-    let mut instance = dimacs::parse_dimacs("examples/sandwich.dimacs");
+    // let mut instance = dimacs::parse_dimacs("examples/sandwich.dimacs");
     // let mut instance = dimacs::parse_dimacs("examples/trivial.dimacs");
+    let mut instance = dimacs::parse_dimacs("examples/trivial2.dimacs");
     // let mut instance = dimacs::parse_dimacs("examples/berkeleydb.dimacs");
     // let mut instance = dimacs::parse_dimacs("examples/busybox.dimacs");
 
-    let order = Some(static_ordering::rand(&instance));
+    let order = Some(static_ordering::keep(&instance));
+    //let order = Some(vec![4, 2, 1, 3]);
 
     let (man, bdd) = DDManager::from_instance(&mut instance, order).unwrap();
 
     let graphviz = man.graphviz(bdd);
     fs::write("t.dot", &graphviz).unwrap();
-    log::debug!("{}", graphviz);
+ //   log::debug!("{}", graphviz);
 
     println!("Starting #SAT");
     println!("{:?}", man.sat_count(bdd));
