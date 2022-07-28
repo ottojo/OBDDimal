@@ -25,6 +25,30 @@ impl PartialEq for DDNode {
 impl Eq for DDNode {}
 
 impl DDNode {
+    pub fn new(id: NodeID, var: VarID, low: NodeID, high: NodeID) -> DDNode {
+        if var != VarID(0) && low == high {
+            log::warn!("Constructing node with same low/high edge");
+        }
+
+        DDNode { id, var, low, high }
+    }
+
+    pub fn id(&self) -> NodeID {
+        self.id
+    }
+
+    pub fn var(&self) -> VarID {
+        self.var
+    }
+
+    pub fn low(&self) -> NodeID {
+        self.low
+    }
+
+    pub fn high(&self) -> NodeID {
+        self.high
+    }
+
     pub fn restrict(&self, top: VarID, order: &[u32], val: bool) -> NodeID {
         if self.var == VarID(0) {
             return self.id;

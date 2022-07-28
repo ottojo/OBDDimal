@@ -355,6 +355,7 @@ dependencies = [
  "concat-idents",
  "criterion",
  "env_logger",
+ "lazy_static",
  "log",
  "num-bigint",
  "num-traits",

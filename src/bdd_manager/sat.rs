@@ -1,6 +1,6 @@
 use std::collections::{HashMap, HashSet};
 
-use crate::bdd_node::{NodeID, VarID};
+use crate::{bdd_node::{NodeID, VarID}, bdd_manager::check_order};
 
 use num_bigint::BigUint;
 use num_traits::{One, Zero};
@@ -28,32 +28,34 @@ impl DDManager {
         } else {
             let node = &self.nodes.get(&node_id).unwrap();
 
-            let low = &self.nodes.get(&node.low).unwrap();
-            let high = &self.nodes.get(&node.high).unwrap();
+            let low = &self.nodes.get(&node.low()).unwrap();
+            let high = &self.nodes.get(&node.high()).unwrap();
 
-            let low_jump = if low.var == VarID(0) {
-                self.order.len() as u32 - self.order[node.var.0 as usize] - 1
+            assert!(check_order(&self.instance.clone().unwrap(), &self.order).is_ok());
+
+            let low_jump = if low.var() == VarID(0) {
+                self.order.len() as u32 - self.order[node.var().0 as usize] - 1
             } else {
-                self.order[low.var.0 as usize] - self.order[node.var.0 as usize] - 1
+                self.order[low.var().0 as usize] - self.order[node.var().0 as usize] - 1
             };
 
-            let high_jump = if high.var == VarID(0) {
-                self.order.len() as u32 - self.order[node.var.0 as usize] - 1
+            let high_jump = if high.var() == VarID(0) {
+                self.order.len() as u32 - self.order[node.var().0 as usize] - 1
             } else {
-                self.order[high.var.0 as usize] - self.order[node.var.0 as usize] - 1
+                self.order[high.var().0 as usize] - self.order[node.var().0 as usize] - 1
             };
 
             let low_fac = BigUint::parse_bytes(b"2", 10).unwrap().pow(low_jump);
             let high_fac = BigUint::parse_bytes(b"2", 10).unwrap().pow(high_jump);
 
-            total += match cache.get(&node.low) {
+            total += match cache.get(&node.low()) {
                 Some(x) => x * low_fac,
-                None => self.sat_count_rec(node.low, cache) * low_fac,
+                None => self.sat_count_rec(node.low(), cache) * low_fac,
             };
 
-            total += match cache.get(&node.high) {
+            total += match cache.get(&node.high()) {
                 Some(x) => x * high_fac,
-                None => self.sat_count_rec(node.high, cache) * high_fac,
+                None => self.sat_count_rec(node.high(), cache) * high_fac,
             };
         };
 
@@ -77,8 +79,8 @@ impl DDManager {
 
             let node = self.nodes.get(&x).unwrap();
 
-            stack.push(node.low);
-            stack.push(node.high);
+            stack.push(node.low());
+            stack.push(node.high());
             nodes.insert(x);
         }
 

@@ -1,8 +1,11 @@
+use std::collections::BTreeMap;
+use std::env::VarError;
 use std::fs;
 
 use super::bdd_node::{DDNode, NodeID, VarID};
 use super::dimacs::Instance;
 
+use log::debug;
 use rand::Rng;
 use rustc_hash::FxHashMap as HashMap;
 use rustc_hash::FxHashSet as HashSet;
@@ -10,25 +13,16 @@ use rustc_hash::FxHashSet as HashSet;
 mod graphviz;
 mod sat;
 
-pub const ZERO: DDNode = DDNode {
-    id: NodeID(0),
-    var: VarID(0),
-    low: NodeID(0),
-    high: NodeID(0),
-};
-
-pub const ONE: DDNode = DDNode {
-    id: NodeID(1),
-    var: VarID(0),
-    low: NodeID(1),
-    high: NodeID(1),
-};
+lazy_static! {
+    pub static ref ZERO: DDNode = DDNode::new(NodeID(0), VarID(0), NodeID(0), NodeID(0));
+    pub static ref ONE: DDNode = DDNode::new(NodeID(1), VarID(0), NodeID(1), NodeID(1),);
+}
 
 fn normalize_ite_args(mut f: NodeID, mut g: NodeID, mut h: NodeID) -> (NodeID, NodeID, NodeID) {
     if f == g {
-        g = ONE.id;
+        g = ONE.id();
     } else if f == h {
-        h = ZERO.id
+        h = ZERO.id()
     }
 
     fn order(a: NodeID, b: NodeID) -> (NodeID, NodeID) {
@@ -40,10 +34,10 @@ fn normalize_ite_args(mut f: NodeID, mut g: NodeID, mut h: NodeID) -> (NodeID, N
         }
     }
 
-    if g == ONE.id {
+    if g == ONE.id() {
         (f, h) = order(f, h);
     }
-    if h == ZERO.id {
+    if h == ZERO.id() {
         (f, g) = order(f, g);
     }
 
@@ -53,12 +47,17 @@ fn normalize_ite_args(mut f: NodeID, mut g: NodeID, mut h: NodeID) -> (NodeID, N
 pub struct DDManager {
     /// Node List
     pub nodes: HashMap<NodeID, DDNode>,
-    /// Variable ordering: order[v.0] is the depth of variable v in the tree
+
+    pub instance: Option<Instance>,
+    /// Variable ordering: order[v.0] is the depth of variable v in the tree.
+    /// Top level is 1.
     /// See [check_order] for requirements
     order: Vec<u32>,
     /// Unique Table for each variable. This works because the Hash impl for
     /// DDNode only hashes variable and high and low edge, not the ID.
-    /// node.var, node.low, node.high
+    /// node.var(), node.low(), node.high()
+    ///
+    /// Index is VarID
     var2nodes: Vec<HashMap<(VarID, NodeID, NodeID), NodeID>>,
     /// Computed Table: ite(f,g,h) cache
     c_table: HashMap<(NodeID, NodeID, NodeID), NodeID>,
@@ -68,6 +67,7 @@ impl Default for DDManager {
     fn default() -> Self {
         let mut man = DDManager {
             nodes: HashMap::default(),
+            instance: None,
             order: Vec::new(),
             var2nodes: Vec::new(),
             c_table: HashMap::default(),
@@ -147,25 +147,37 @@ fn check_order(cnf: &Instance, order: &[u32]) -> Result<(), String> {
     Ok(())
 }
 
+fn order_to_layernames(order: &[u32]) -> Vec<VarID> {
+    let mut res = vec![VarID(0); *order.iter().max().unwrap() as usize];
+    for (var_num, var_pos) in order.iter().enumerate() {
+        res[*var_pos as usize - 1] = VarID(var_num as u32);
+    }
+    res
+}
+
 impl DDManager {
     pub fn from_instance(
         instance: &mut Instance,
         order: Option<Vec<u32>>,
     ) -> Result<(DDManager, NodeID), String> {
         let mut man = DDManager::default();
+        man.instance = Some(instance.clone());
         let clause_order = align_clauses(&instance.clauses);
         if let Some(o) = order {
             check_order(instance, &o)?;
             man.order = o;
         }
 
+        man.var2nodes
+            .resize(instance.no_variables as usize + 1, HashMap::default());
+
         log::info!("Initial order: {:?}", man.order);
 
         let mut bdd = man.one();
 
         let mut n = 1;
-        for i in clause_order.iter() {
-            let clause = &instance.clauses[*i];
+        for i in 0..instance.clauses.len() {
+            let clause = &instance.clauses[i];
 
             log::info!("Integrating clause: {:?}", clause);
 
@@ -184,6 +196,10 @@ impl DDManager {
 
             man.purge_retain(bdd);
 
+            bdd = man.dvo_sifting(bdd);
+
+            //man.purge_retain(bdd);
+
             log::info!(
                 "Nr. Nodes: {:?} ({:?}/{:?} clauses integrated)",
                 &man.nodes.len(),
@@ -193,26 +209,190 @@ impl DDManager {
             n += 1;
         }
 
-        // TODO: Actual DVO here (or elsewhere)
-        //
-        let graphviz = man.graphviz(bdd);
-        fs::write("before_1.dot", &graphviz).unwrap();
-        man.swap(VarID(1), VarID(2));
-        let graphviz = man.graphviz(bdd);
-        fs::write("after_1.dot", &graphviz).unwrap();
-        man.swap(VarID(2), VarID(1));
-        let graphviz = man.graphviz(bdd);
-        fs::write("after_2.dot", &graphviz).unwrap();
+        //man.swap(VarID(2), VarID(3));
 
-        log::info!("Final order: {:?}", man.order);
+        fs::write("intermediate.dot", man.graphviz(bdd)).unwrap();
+
+        bdd = man.reduce(bdd);
+
+        log::info!(
+            "Final order: {:?} (layers: {:?})",
+            man.order,
+            order_to_layernames(&man.order)
+        );
 
         Ok((man, bdd))
     }
 
     /// Initialize the BDD with zero and one constant nodes
     fn bootstrap(&mut self) {
-        self.add_node(ZERO);
-        self.add_node(ONE);
+        self.add_node(*ZERO);
+        self.add_node(*ONE);
+    }
+
+    /// Collect all nodes that are part of the specified function
+    fn collect_nodes(&self, f: NodeID) -> HashSet<NodeID> {
+        let mut h = HashSet::default();
+
+        fn collect_impl(man: &DDManager, f: NodeID, h: &mut HashSet<NodeID>) {
+            if h.contains(&f) {
+                return;
+            }
+
+            let inserted = h.insert(f);
+            assert!(inserted);
+
+            let node = man.nodes.get(&f).unwrap();
+            collect_impl(man, node.low(), h);
+            collect_impl(man, node.high(), h);
+        }
+
+        collect_impl(self, f, &mut h);
+        h
+    }
+
+    fn nr_nodes(&self, f: NodeID) -> usize {
+        self.collect_nodes(f).len()
+    }
+
+    /// Find the variable at specified level
+    fn var_at_level(&self, level: u32) -> Option<VarID> {
+        self.order
+            .iter()
+            .enumerate()
+            .find(|(_, &l)| l == level)
+            .map(|(v, _)| VarID(v as u32))
+    }
+
+    fn format_node(&self, id: NodeID) -> String {
+        let node = self.nodes.get(&id).unwrap();
+        format!(
+            "{{Node {:?}: {:?} high: {:?}, low: {:?} }}",
+            id,
+            node.var(),
+            node.high(),
+            node.low()
+        )
+    }
+
+    fn reduce(&mut self, v: NodeID) -> NodeID {
+        log::debug!("reducing");
+        let mut vlist: Vec<Vec<NodeID>> = vec![Vec::new(); self.order[0] as usize];
+
+        for (id, node) in self.nodes.iter() {
+            vlist[node.var().0 as usize].push(*id);
+        }
+
+        let mut nextid = 0;
+
+        #[derive(PartialEq, Eq, PartialOrd, Ord, Copy, Clone, Debug)]
+        enum Key {
+            Terminal(bool),
+            LowHigh(NodeID, NodeID),
+            Unmatchable,
+        }
+
+        // This will be modified, such that old_nodes[id].id != id may be true, if a node is redundant.
+        let mut old_nodes = self.nodes.clone();
+        let mut new_nodes = HashMap::default();
+
+        // Graph layers, bottom to top
+        for i in order_to_layernames(&self.order).iter().rev() {
+            log::debug!("Handling var {:?}", i);
+
+            let mut Q: Vec<(Key, NodeID)> = Vec::new();
+
+            for u in vlist[i.0 as usize].iter() {
+                log::debug!(" Node {:?}", u);
+                let node = old_nodes.get_mut(u).unwrap();
+                if node.var() == VarID(0) {
+                    log::debug!("  terminal node. Adding to Q");
+                    let key = if node.id() == ZERO.id {
+                        Key::Terminal(false)
+                    } else {
+                        Key::Terminal(true)
+                    };
+
+                    Q.push((key, *u));
+                } else if node.low() == node.high() {
+                    log::debug!("  Redundant to only child {:?}!", node.low());
+                    node.id = node.low();
+                } else {
+                    log::debug!("  Normal node, adding to Q");
+                    Q.push((Key::LowHigh(node.low(), node.high()), node.id()));
+                }
+            }
+
+            Q.sort_by_key(|k| k.0);
+
+            log::debug!(" Iterating over Q...");
+            let mut oldkey = Key::Unmatchable;
+            for (key, u) in Q {
+                log::debug!("  <{:?}, {:?}>", key, u);
+                if key == oldkey {
+                    log::debug!(
+                        "  Repeated key -> Duplicate node. Assigning same ID as last ({:?})",
+                        NodeID(nextid)
+                    );
+                    let node = old_nodes.get_mut(&u).unwrap();
+                    node.id = NodeID(nextid);
+                } else {
+                    log::debug!("  New node");
+                    nextid = {
+                        match key {
+                            Key::Terminal(true) => 1,
+                            Key::Terminal(false) => 0,
+                            _ => nextid + 1,
+                        }
+                    };
+                    {
+                        let node = old_nodes.get_mut(&u).unwrap();
+                        log::debug!("  Assigning ID {:?}", nextid);
+                        node.id = NodeID(nextid);
+                    }
+                    log::debug!("  Inserting into subgraph");
+
+                    let (low_ptr, high_ptr) = {
+                        let node = old_nodes.get(&u).unwrap();
+                        (node.low, node.high)
+                    };
+
+                    log::debug!("  Visiting low and high child to see if ID changed");
+                    let lownode_id = old_nodes.get(&low_ptr).unwrap().id();
+                    let highnode_id = old_nodes.get(&high_ptr).unwrap().id();
+
+                    log::debug!(
+                        "  Low, High were ({:?},{:?}), are now ({:?},{:?})",
+                        low_ptr,
+                        high_ptr,
+                        lownode_id,
+                        highnode_id
+                    );
+
+                    log::debug!("  Updating node");
+                    let node = old_nodes.get_mut(&u).unwrap();
+                    node.low = lownode_id;
+                    node.high = highnode_id;
+
+                    new_nodes.insert(node.id(), *node);
+
+                    oldkey = key;
+                }
+            }
+        }
+
+        self.nodes = new_nodes;
+
+        for v in self.var2nodes.iter_mut() {
+            v.clear();
+        }
+
+        for (_id, node) in self.nodes.iter() {
+            self.var2nodes[node.var().0 as usize]
+                .insert((node.var(), node.low(), node.high()), node.id());
+        }
+
+        old_nodes.get(&v).unwrap().id() // Updated ID of function
     }
 
     /// Swaps graph layers of variables a and b. Requires a to be directly above b.
@@ -224,70 +404,154 @@ impl DDManager {
             self.order[a.0 as usize],
             self.order[b.0 as usize]
         );
+        assert!(a.0 != 0 && b.0 != 0);
         assert!(self.order[b.0 as usize] == self.order[a.0 as usize] + 1);
         let ids = self.var2nodes[a.0 as usize]
             .values()
             .cloned()
             .collect::<Vec<NodeID>>();
-        log::debug!("Replacing {} nodes", ids.len());
+
+        self.var2nodes[a.0 as usize].clear();
+        // Unique Table: Will not be valid. Directly modified node might be
+        // degenerate. Reduction after reduce will restore canonical form.
+
         for id in ids {
             let f_id = id;
-            log::debug!("Replacing node {:?}", f_id);
 
-            let f_node = self.nodes[&f_id];
-            self.var2nodes[a.0 as usize].remove_entry(&(f_node.var, f_node.low, f_node.high));
+            let old_f_node = self.nodes[&f_id];
 
-            // TODO: Var ID 0? -> Self reference?
+            log::debug!("Replacing node {:?} old_f_node={:?}", f_id, old_f_node);
 
-            let f_1_id = f_node.high;
-            log::debug!("f_1 is {:?}", f_1_id);
-            let f_1_node = self.nodes[&f_1_id];
-            let (f_11_id, f_10_id) = if f_1_node.var == b {
-                (f_1_node.high, f_1_node.low)
-            } else {
-                (f_1_id, f_1_id)
-            };
-            log::debug!("f_11 is {:?}", f_11_id);
-            log::debug!("f_10 is {:?}", f_10_id);
+            let f_1_id = old_f_node.high();
+            let f_0_id = old_f_node.low();
 
-            let f_0_id = f_node.low;
-            log::debug!("f_0 is {:?}", f_0_id);
             let f_0_node = self.nodes[&f_0_id];
-            let (f_01_id, f_00_id) = if f_0_node.var == b {
-                (f_0_node.high, f_0_node.low)
-            } else {
-                (f_0_id, f_0_id)
-            };
+            let f_1_node = self.nodes[&f_1_id];
 
-            log::debug!("f_01 is {:?}", f_01_id);
-            log::debug!("f_00 is {:?}", f_00_id);
+            if f_0_node.var() != b && f_1_node.var() != b {
+                // "If neither child of the node for f is labeled b, then the
+                // node is moved to the other subtable; otherwise swapping
+                // proceeds as described above"
+                let new_f_node = DDNode::new(f_id, b, f_0_id, f_1_id);
+                *self.nodes.get_mut(&f_id).unwrap() = new_f_node;
+                continue;
+            }
 
-            let new_then_id = self.node_get_or_create(&DDNode {
-                id: NodeID(0),
-                var: a,
-                low: f_01_id,
-                high: f_11_id,
-            });
+            let (f_01_id, f_00_id) = (f_0_node.high(), f_0_node.low());
+            let (f_11_id, f_10_id) = (f_1_node.high(), f_1_node.low());
 
-            let new_else_id = self.node_get_or_create(&DDNode {
-                id: NodeID(0),
-                var: a,
-                low: f_00_id,
-                high: f_10_id,
-            });
-            self.nodes.get_mut(&f_id).unwrap().var = b;
-            self.nodes.get_mut(&f_id).unwrap().high = new_then_id;
-            self.nodes.get_mut(&f_id).unwrap().low = new_else_id;
-            self.c_table.clear();
+            let new_then_id = self.node_get_or_create(a, f_01_id, f_11_id);
+            let new_else_id = self.node_get_or_create(a, f_00_id, f_10_id);
 
-            // Update unique table
-            self.var2nodes[b.0 as usize].insert((b, new_else_id, new_then_id), f_id);
+            log::debug!(
+                "New children: high {} low {}",
+                self.format_node(new_then_id),
+                self.format_node(new_else_id)
+            );
+
+            // Replace F node
+            let new_f_node = DDNode::new(f_id, b, new_else_id, new_then_id);
+
+            log::debug!("new_f_node={:?}", new_f_node);
+
+            *self.nodes.get_mut(&f_id).unwrap() = new_f_node;
+
+            let old = self.var2nodes[b.0 as usize].insert((b, new_else_id, new_then_id), f_id);
+
+            if let Some(old_node_id) = old {
+                log::warn!( "The unique table for {:?} seems to already contain a node ({:?} {:?} {:?}) with ID {:?}", b,b,new_else_id,new_then_id,old_node_id)
+            }
 
             log::debug!("Replaced node {:?} with {:?}", f_id, self.nodes[&f_id]);
         }
         self.order.swap(a.0 as usize, b.0 as usize);
-        log::debug!("Order is now: {:?}", self.order);
-        // TODO: Minimize (apparently?)
+        self.c_table.clear();
+        log::debug!(
+            "Order is now: {:?} (layers: {:?})",
+            self.order,
+            order_to_layernames(&self.order)
+        );
+    }
+
+    fn dvo_sifting(&mut self, mut f: NodeID) -> NodeID{
+        let var_ids: Vec<VarID> = self
+            .var2nodes
+            .iter()
+            .enumerate()
+            .filter(|(i, nodes)| *i != 0 && !nodes.is_empty())
+            .map(|(i, _)| i)
+            .map(|i| VarID(i as u32))
+            .collect();
+
+        for var in var_ids {
+            let starting_pos = self.order[var.0 as usize];
+
+            let mut best_position = starting_pos;
+            let mut best_graphsize = self.nr_nodes(f);
+
+            log::info!(
+                "Sifting variable {:?}, starting from level {} (graph size {}).",
+                var,
+                starting_pos,
+                best_graphsize
+            );
+
+            // Move variable to the bottom
+            let terminal_node_level = self.order[ZERO.var().0 as usize];
+
+            log::info!("Moving down...");
+            for level in starting_pos + 1..terminal_node_level {
+                log::info!("Trying level {}", level);
+                // Swap var at level-1 (our variable) with var at level
+                self.swap(
+                    self.var_at_level(level - 1).unwrap(),
+                    self.var_at_level(level).unwrap(),
+                );
+                f = self.reduce(f);
+
+                let new_size = self.nr_nodes(f);
+                if new_size < best_graphsize {
+                    best_graphsize = new_size;
+                    best_position = level;
+                }
+            }
+
+            // Level is now bottom (terminal-1). Move variable to the top
+            log::info!("Moving up...");
+
+            for level in (1..terminal_node_level - 1).rev() {
+                log::info!("Trying level {}", level);
+                // Swap var at level+1 (our variable) with var at level
+                self.swap(
+                    self.var_at_level(level).unwrap(),
+                    self.var_at_level(level + 1).unwrap(),
+                );
+                f = self.reduce(f);
+                let new_size = self.nr_nodes(f);
+                if new_size < best_graphsize {
+                    best_graphsize = new_size;
+                    best_position = level;
+                }
+            }
+
+            // Level is now top (1). Move variable down to best location
+
+            log::info!(
+                "The best result was graph size of {} at level {}. Moving there...",
+                best_graphsize,
+                best_position
+            );
+
+            for level in 2..best_position {
+                // Swap var at level-1 (our variable) with var at level
+                self.swap(
+                    self.var_at_level(level - 1).unwrap(),
+                    self.var_at_level(level).unwrap(),
+                );
+                f = self.reduce(f);
+            }
+        }
+        f
     }
 
     /// Ensure order vec is valid up to specified variable
@@ -316,31 +580,36 @@ impl DDManager {
 
     /// Insert Node. ID is assigned for nonterminal nodes (var != 0).
     /// This does not check the unique table, you should do so before using!
-    fn add_node(&mut self, mut node: DDNode) -> NodeID {
-        if node.id.0 != 0 && node.id.0 != 1 {
+    fn add_node(&mut self, node: DDNode) -> NodeID {
+        if node.id().0 != 0 && node.id().0 != 1 {
             panic!("Adding node With ID > 1: {:?}", node);
         }
 
-        if node.var.0 != 0 && node.id.0 != 0 {
+        if node.var().0 != 0 && node.id().0 != 0 {
             panic!("Trying to add node with predefined ID that is not a terminal node");
         }
 
-        log::debug!("\tCreating new node");
+        //log::debug!("\tCreating new node");
+        let mut new_id = node.id();
 
-        if node.var != VarID(0) {
-            // Assign new node ID
-            let mut id = NodeID(rand::thread_rng().gen::<u32>());
-
-            while self.nodes.get(&id).is_some() {
-                id = NodeID(rand::thread_rng().gen::<u32>());
+        if node.var() != VarID(0) {
+            if node.low() == node.high() {
+                log::warn!("Trying to add non-reduced node: low==high");
             }
 
-            node.id = id;
-        }
-        log::debug!("\t\tassigned ID {:?}", node.id);
+            // Assign new node ID
+            new_id = NodeID(rand::thread_rng().gen::<u32>());
 
-        let id = node.id;
-        let var = node.var;
+            while self.nodes.get(&new_id).is_some() {
+                new_id = NodeID(rand::thread_rng().gen::<u32>());
+            }
+        }
+        //log::debug!("\t\tassigned ID {:?}", node.id());
+
+        let node = DDNode::new(new_id, node.var(), node.low(), node.high());
+
+        let id = node.id();
+        let var = node.var();
 
         self.nodes.insert(id, node);
 
@@ -351,7 +620,7 @@ impl DDManager {
         self.ensure_order(var);
 
         let was_inserted =
-            self.var2nodes[var.0 as usize].insert((node.var, node.low, node.high), id);
+            self.var2nodes[var.0 as usize].insert((node.var(), node.low(), node.high()), id);
         if was_inserted != None {
             panic!("Node is already in unique table!");
         }
@@ -360,27 +629,18 @@ impl DDManager {
     }
 
     /// Search for Node, create if it doesnt exist
-    fn node_get_or_create(&mut self, node: &DDNode) -> NodeID {
-        log::debug!(
-            "node_get_or_create {:?} {:?} {:?}",
-            node.var,
-            node.low,
-            node.high
-        );
-        if self.var2nodes.len() <= (node.var.0 as usize) {
+    fn node_get_or_create(&mut self, var: VarID, low: NodeID, high: NodeID) -> NodeID {
+        if self.var2nodes.len() <= (var.0 as usize) {
             // Unique table does not contain any entries for this variable. Create new Node.
-            return self.add_node(*node);
+            return self.add_node(DDNode::new(NodeID(0), var, low, high));
         }
 
         // Lookup in variable-specific unique-table
-        let res = self.var2nodes[node.var.0 as usize].get(&(node.var, node.low, node.high));
+        let res = self.var2nodes[var.0 as usize].get(&(var, low, high));
 
         match res {
-            Some(nodeid) => {
-                log::debug!("\tFound already existing node: {:?}", nodeid);
-                *nodeid
-            } // An existing node was found
-            None => self.add_node(*node), // No existing node found -> create new
+            Some(nodeid) => *nodeid, // An existing node was found
+            None => self.add_node(DDNode::new(NodeID(0), var, low, high)), // No existing node found -> create new
         }
     }
 
@@ -399,15 +659,10 @@ impl DDManager {
     // Variables
 
     pub fn ith_var(&mut self, var: VarID) -> NodeID {
-        let v = DDNode {
-            id: NodeID(0),
-            var,
-            low: NodeID(0),
-            high: NodeID(1),
-        };
+        let v = DDNode::new(NodeID(0), var, NodeID(0), NodeID(1));
 
         if self.var2nodes.len() > (var.0 as usize) {
-            let x = self.var2nodes[var.0 as usize].get(&(v.var, v.low, v.high));
+            let x = self.var2nodes[var.0 as usize].get(&(v.var(), v.low(), v.high()));
 
             if let Some(x) = x {
                 return *x;
@@ -418,15 +673,10 @@ impl DDManager {
     }
 
     pub fn nith_var(&mut self, var: VarID) -> NodeID {
-        let v = DDNode {
-            id: NodeID(0),
-            var,
-            low: NodeID(1),
-            high: NodeID(0),
-        };
+        let v = DDNode::new(NodeID(0), var, NodeID(1), NodeID(0));
 
         if self.var2nodes.len() > (var.0 as usize) {
-            let x = self.var2nodes[var.0 as usize].get(&(v.var, v.low, v.high));
+            let x = self.var2nodes[var.0 as usize].get(&(v.var(), v.low(), v.high()));
 
             if let Some(x) = x {
                 return *x;
@@ -501,7 +751,7 @@ impl DDManager {
                 let gnode = self.nodes.get(&g).unwrap();
                 let hnode = self.nodes.get(&h).unwrap();
 
-                let top = self.min_by_order(fnode.var, gnode.var, hnode.var);
+                let top = self.min_by_order(fnode.var(), gnode.var(), hnode.var());
 
                 let fxt = fnode.restrict(top, &self.order, true);
                 let gxt = gnode.restrict(top, &self.order, true);
@@ -518,14 +768,7 @@ impl DDManager {
                     return low;
                 }
 
-                let node = DDNode {
-                    id: NodeID(0),
-                    var: top,
-                    low,
-                    high,
-                };
-
-                let out = self.node_get_or_create(&node);
+                let out = self.node_get_or_create(top, low, high);
 
                 self.c_table.insert((f, g, h), out);
 
@@ -564,10 +807,10 @@ impl DDManager {
         while node_id.0 >= 2 {
             let node = &self.nodes.get(&node_id).unwrap();
 
-            if values[node.var.0 as usize] {
-                node_id = node.high;
+            if values[node.var().0 as usize] {
+                node_id = node.high();
             } else {
-                node_id = node.low;
+                node_id = node.low();
             }
         }
 
@@ -588,8 +831,8 @@ impl DDManager {
 
             let node = self.nodes.get(&x).unwrap();
 
-            stack.push(node.low);
-            stack.push(node.high);
+            stack.push(node.low());
+            stack.push(node.high());
             keep.insert(x);
         }
 
@@ -598,7 +841,7 @@ impl DDManager {
         garbage.retain(|&x, _| !keep.contains(&x) && x.0 > 1);
 
         for x in &garbage {
-            self.var2nodes[x.1.var.0 as usize].remove(&(x.1.var, x.1.low, x.1.high));
+            self.var2nodes[x.1.var().0 as usize].remove(&(x.1.var(), x.1.low(), x.1.high()));
             self.nodes.remove(x.0);
         }
 
