@@ -6,9 +6,9 @@ fn main() {
     env_logger::init();
 
     // let mut instance = dimacs::parse_dimacs("examples/cerf.dimacs");
-    // let mut instance = dimacs::parse_dimacs("examples/sandwich.dimacs");
+    let mut instance = dimacs::parse_dimacs("examples/sandwich.dimacs");
     // let mut instance = dimacs::parse_dimacs("examples/trivial.dimacs");
-    let mut instance = dimacs::parse_dimacs("examples/trivial2.dimacs");
+    // let mut instance = dimacs::parse_dimacs("examples/trivial2.dimacs");
     // let mut instance = dimacs::parse_dimacs("examples/berkeleydb.dimacs");
     // let mut instance = dimacs::parse_dimacs("examples/busybox.dimacs");
 
@@ -17,9 +17,8 @@ fn main() {
 
     let (man, bdd) = DDManager::from_instance(&mut instance, order).unwrap();
 
-    let graphviz = man.graphviz(bdd);
-    fs::write("t.dot", &graphviz).unwrap();
-    //   log::debug!("{}", graphviz);
+    fs::write("result.dot", man.graphviz(bdd)).unwrap();
+
     log::info!("function: {:?}", bdd);
 
     println!("Starting #SAT");
@@ -32,6 +31,10 @@ mod tests {
     use super::*;
     use num_bigint::BigUint;
 
+    fn init() {
+        let _ = env_logger::builder().is_test(true).try_init();
+    }
+
     fn build_verify_ssat(filepath: &str, target: &[u8]) {
         let expected = BigUint::parse_bytes(target, 10).unwrap();
 
@@ -43,22 +46,26 @@ mod tests {
 
     #[test]
     fn sandwich_ssat() {
+        init();
         build_verify_ssat("examples/sandwich.dimacs", b"2808")
     }
 
     #[test]
     fn berkeleydb_ssat() {
+        init();
         build_verify_ssat("examples/berkeleydb.dimacs", b"4080389785")
     }
 
     #[test]
     fn trivial_ssat() {
+        init();
         build_verify_ssat("examples/trivial.dimacs", b"5")
     }
 
     #[test]
     #[ignore]
     fn busybox_ssat() {
+        init();
         build_verify_ssat("examples/busybox.dimacs", b"FAIL")
     }
 }

@@ -188,10 +188,6 @@ impl DDManager {
 
             man.purge_retain(bdd);
 
-            bdd = man.dvo_sifting(bdd);
-
-            //man.purge_retain(bdd);
-
             log::info!(
                 "Nr. Nodes: {:?} ({:?}/{:?} clauses integrated)",
                 &man.nodes.len(),
@@ -201,6 +197,7 @@ impl DDManager {
             n += 1;
         }
 
+        bdd = man.dvo_sifting(bdd);
         bdd = man.reduce(bdd);
 
         log::info!(
@@ -269,8 +266,6 @@ impl DDManager {
     fn reduce(&mut self, v: NodeID) -> NodeID {
         log::debug!("reducing");
 
-        self.purge_retain(v);
-
         let mut vlist: Vec<Vec<NodeID>> = vec![Vec::new(); self.order[0] as usize];
 
         for (id, node) in self.nodes.iter() {
@@ -301,8 +296,10 @@ impl DDManager {
                 //log::debug!(" Node {:?}", u);
                 let node_var = old_nodes.get(u).unwrap().var();
                 let node_id = old_nodes.get(u).unwrap().id();
-                let node_low = old_nodes.get(u).unwrap().low();
-                let node_high = old_nodes.get(u).unwrap().high();
+                let low_ptr = old_nodes.get(u).unwrap().low();
+                let high_ptr = old_nodes.get(u).unwrap().high();
+                let low_real_id = old_nodes.get(&low_ptr).unwrap().id();
+                let high_real_id = old_nodes.get(&high_ptr).unwrap().id();
                 if node_var == VarID(0) {
                     //log::debug!("  terminal node. Adding to Q");
                     let key = if node_id == ZERO.id {
@@ -312,13 +309,12 @@ impl DDManager {
                     };
 
                     Q.push((key, *u));
-                } else if node_low == node_high {
+                } else if low_real_id == high_real_id {
                     //log::debug!("  Redundant to only child {:?}!", node.low());
-                    let low_real_id = old_nodes.get(&node_low).unwrap().id();
                     old_nodes.get_mut(u).unwrap().id = low_real_id;
                 } else {
                     //log::debug!("  Normal node, adding to Q");
-                    Q.push((Key::LowHigh(node_low, node_high), node_id));
+                    Q.push((Key::LowHigh(low_real_id, high_real_id), node_id));
                 }
             }
 
@@ -402,8 +398,8 @@ impl DDManager {
         }
 
         // Return updated ID of function (Changes due to renumbering, but this
-        // s unavoidable since v may have been redundant or duplicate)
-        old_nodes.get(&v).unwrap().id() // Wrong? This points to redundant node!
+        // is unavoidable since v may have been redundant or duplicate)
+        old_nodes.get(&v).unwrap().id()
     }
 
     /// Swaps graph layers of variables a and b. Requires a to be directly above b.
@@ -495,6 +491,8 @@ impl DDManager {
             .collect();
 
         for var in var_ids {
+            f = self.reduce(f);
+            self.purge_retain(f);
             let starting_pos = self.order[var.0 as usize];
 
             let mut best_position = starting_pos;
