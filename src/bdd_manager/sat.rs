@@ -1,6 +1,6 @@
 use std::collections::{HashMap, HashSet};
 
-use crate::{bdd_node::{NodeID, VarID}, bdd_manager::check_order};
+use crate::bdd_node::{NodeID, VarID};
 
 use num_bigint::BigUint;
 use num_traits::{One, Zero};
@@ -30,8 +30,6 @@ impl DDManager {
 
             let low = &self.nodes.get(&node.low()).unwrap();
             let high = &self.nodes.get(&node.high()).unwrap();
-
-            assert!(check_order(&self.instance.clone().unwrap(), &self.order).is_ok());
 
             let low_jump = if low.var() == VarID(0) {
                 self.order.len() as u32 - self.order[node.var().0 as usize] - 1
