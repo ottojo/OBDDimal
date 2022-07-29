@@ -862,7 +862,7 @@ impl DDManager {
 
 #[cfg(test)]
 mod tests {
-    use std::{collections::HashMap, fs};
+    use std::collections::HashMap;
 
     use crate::bdd_node::{DDNode, NodeID, VarID};
 
@@ -877,7 +877,10 @@ mod tests {
         init();
 
         let mut man = DDManager::default();
-        man.order = vec![4, 1, 2, 3];
+        #[allow(clippy::field_reassign_with_default)]
+        {
+            man.order = vec![4, 1, 2, 3];
+        }
         man.var2nodes.resize(5, HashMap::default());
 
         man.nodes.insert(
@@ -898,9 +901,7 @@ mod tests {
         );
         man.var2nodes[1].insert((VarID(1), NodeID(3), NodeID(3)), NodeID(4));
 
-        fs::write("before.dot", man.graphviz(NodeID(4))).unwrap();
         let f = man.reduce(NodeID(4));
-        fs::write("after.dot", man.graphviz(f)).unwrap();
         let f_node = man.nodes.get(&f).unwrap();
         assert!(f_node.low() == NodeID(0));
         assert!(f_node.high() == NodeID(1));
@@ -911,7 +912,10 @@ mod tests {
         init();
 
         let mut man = DDManager::default();
-        man.order = vec![4, 1, 2, 3];
+        #[allow(clippy::field_reassign_with_default)]
+        {
+            man.order = vec![4, 1, 2, 3];
+        }
         man.var2nodes.resize(5, HashMap::default());
 
         man.nodes.insert(
@@ -939,9 +943,7 @@ mod tests {
         man.var2nodes[1].insert((VarID(1), NodeID(3), NodeID(4)), NodeID(5));
 
         let f = NodeID(5);
-        fs::write("before.dot", man.graphviz(f)).unwrap();
         let f = man.reduce(f);
-        fs::write("after.dot", man.graphviz(f)).unwrap();
         let f_node = man.nodes.get(&f).unwrap();
 
         let t_node_id = f_node.high();
