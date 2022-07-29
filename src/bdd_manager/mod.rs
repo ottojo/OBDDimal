@@ -719,3 +719,91 @@ impl DDManager {
         self.c_table.retain(|_, x| keep.contains(x));
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use rustc_hash::FxHashMap as HashMap;
+
+    use crate::bdd_node::{DDNode, NodeID, VarID};
+
+    use super::DDManager;
+
+    fn init() {
+        let _ = env_logger::builder().is_test(true).try_init();
+    }
+
+    fn build_trivial_bdd() -> (DDManager, NodeID) {
+        let mut man = DDManager::default();
+        #[allow(clippy::field_reassign_with_default)]
+        {
+            man.order = vec![3, 1, 2];
+        }
+        man.var2nodes
+            .resize(man.order[0] as usize, HashMap::default());
+
+        man.nodes.insert(
+            NodeID(2),
+            DDNode::new(NodeID(2), VarID(2), NodeID(0), NodeID(1)),
+        );
+        man.var2nodes[2].insert((VarID(2), NodeID(0), NodeID(1)), NodeID(2));
+
+        man.nodes.insert(
+            NodeID(3),
+            DDNode::new(NodeID(3), VarID(1), NodeID(0), NodeID(2)),
+        );
+        man.var2nodes[1].insert((VarID(1), NodeID(0), NodeID(2)), NodeID(3));
+
+        let f = NodeID(3);
+
+        (man, f)
+    }
+
+    #[test]
+    fn node_count() {
+        init();
+
+        let (man, f) = build_trivial_bdd();
+
+        // Test that node-count works in trivial case
+        assert!(man.nr_nodes(f) == 4);
+    }
+
+    #[test]
+    fn node_count_multiroot() {
+        init();
+
+        let (mut man, f) = build_trivial_bdd();
+
+        man.nodes.insert(
+            NodeID(4),
+            DDNode::new(NodeID(4), VarID(1), NodeID(1), NodeID(2)),
+        );
+        man.var2nodes[1].insert((VarID(1), NodeID(1), NodeID(2)), NodeID(4));
+
+        // Test that node-count works even if unrelated nodes are present
+        assert!(man.nr_nodes(f) == 4);
+    }
+
+    #[test]
+    fn node_count_trivial_reduce() {
+        init();
+
+        let (mut man, f) = build_trivial_bdd();
+
+        assert!(man.nr_nodes(f) == 4);
+
+        let f = man.reduce(f);
+
+        // Test that node count remains after reducing already-reduced graph
+        assert!(man.nr_nodes(f) == 4);
+    }
+
+    #[test]
+    fn sift_easy(){
+        init();
+        let (mut man, f) = build_trivial_bdd();
+        assert!(man.nr_nodes(f) == 4);
+        let f  = man.dvo_sifting(f);
+        assert!(man.nr_nodes(f) <= 4);
+    }
+}

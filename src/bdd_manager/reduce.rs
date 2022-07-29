@@ -8,6 +8,7 @@ use crate::{
 use super::DDManager;
 
 impl DDManager {
+    #[must_use]
     pub(crate) fn reduce(&mut self, v: NodeID) -> NodeID {
         log::debug!("reducing");
 
@@ -189,10 +190,14 @@ mod tests {
         );
         man.var2nodes[1].insert((VarID(1), NodeID(3), NodeID(3)), NodeID(4));
 
-        let f = man.reduce(NodeID(4));
+        let f = NodeID(4);
+        assert!(man.nr_nodes(f) == 5);
+
+        let f = man.reduce(f);
         let f_node = man.nodes.get(&f).unwrap();
         assert!(f_node.low() == NodeID(0));
         assert!(f_node.high() == NodeID(1));
+        assert!(man.nr_nodes(f) == 3);
     }
 
     #[test]
