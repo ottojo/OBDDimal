@@ -799,11 +799,11 @@ mod tests {
     }
 
     #[test]
-    fn sift_easy(){
+    fn sift_easy() {
         init();
         let (mut man, f) = build_trivial_bdd();
         assert!(man.nr_nodes(f) == 4);
-        let f  = man.dvo_sifting(f);
+        let f = man.dvo_sifting(f);
         assert!(man.nr_nodes(f) <= 4);
     }
 }
