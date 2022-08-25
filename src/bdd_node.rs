@@ -27,7 +27,7 @@ impl Eq for DDNode {}
 impl DDNode {
     pub fn new(id: NodeID, var: VarID, low: NodeID, high: NodeID) -> DDNode {
         if var != VarID(0) && low == high {
-            log::warn!("Constructing node with same low/high edge");
+            // log::warn!("Constructing node with same low/high edge");
         }
 
         DDNode { id, var, low, high }

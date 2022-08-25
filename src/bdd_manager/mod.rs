@@ -6,8 +6,8 @@ use rustc_hash::FxHashMap as HashMap;
 use rustc_hash::FxHashSet as HashSet;
 
 mod graphviz;
-mod sat;
 mod reduce;
+mod sat;
 
 lazy_static! {
     pub static ref ZERO: DDNode = DDNode::new(NodeID(0), VarID(0), NodeID(0), NodeID(0));
@@ -266,7 +266,7 @@ impl DDManager {
 
     /// Swaps graph layers of variables a and b. Requires a to be directly above b.
     fn swap(&mut self, a: VarID, b: VarID) {
-        log::debug!(
+        log::info!(
             "Swapping variables {:?} and {:?} (layers {} and {})",
             a,
             b,
@@ -353,12 +353,13 @@ impl DDManager {
             .collect();
 
         for var in var_ids {
+            self.purge_retain(f);
             f = self.reduce(f);
             self.purge_retain(f);
             let starting_pos = self.order[var.0 as usize];
 
             let mut best_position = starting_pos;
-            let mut best_graphsize = self.nr_nodes(f);
+            let mut best_graphsize = self.nodes.len();
 
             log::info!(
                 "Sifting variable {:?}, starting from level {} (graph size {}).",
@@ -370,17 +371,19 @@ impl DDManager {
             // Move variable to the bottom
             let terminal_node_level = self.order[ZERO.var().0 as usize];
 
-            log::info!("Moving down...");
+            log::debug!("Moving down...");
             for level in starting_pos + 1..terminal_node_level {
-                log::info!("Trying level {}", level);
+                log::debug!("Trying level {}", level);
                 // Swap var at level-1 (our variable) with var at level
                 self.swap(
                     self.var_at_level(level - 1).unwrap(),
                     self.var_at_level(level).unwrap(),
                 );
+                self.purge_retain(f);
                 f = self.reduce(f);
+                self.purge_retain(f);
 
-                let new_size = self.nr_nodes(f);
+                let new_size = self.nodes.len();
                 if new_size < best_graphsize {
                     best_graphsize = new_size;
                     best_position = level;
@@ -388,17 +391,19 @@ impl DDManager {
             }
 
             // Level is now bottom (terminal-1). Move variable to the top
-            log::info!("Moving up...");
+            log::debug!("Moving up...");
 
             for level in (1..terminal_node_level - 1).rev() {
-                log::info!("Trying level {}", level);
+                log::debug!("Trying level {}", level);
                 // Swap var at level+1 (our variable) with var at level
                 self.swap(
                     self.var_at_level(level).unwrap(),
                     self.var_at_level(level + 1).unwrap(),
                 );
+                self.purge_retain(f);
                 f = self.reduce(f);
-                let new_size = self.nr_nodes(f);
+                self.purge_retain(f);
+                let new_size = self.nodes.len();
                 if new_size < best_graphsize {
                     best_graphsize = new_size;
                     best_position = level;
@@ -413,14 +418,18 @@ impl DDManager {
                 best_position
             );
 
-            for level in 2..best_position {
+            for level in 2..best_position + 1 {
                 // Swap var at level-1 (our variable) with var at level
                 self.swap(
                     self.var_at_level(level - 1).unwrap(),
                     self.var_at_level(level).unwrap(),
                 );
+                self.purge_retain(f);
                 f = self.reduce(f);
+                self.purge_retain(f);
             }
+
+            log::info!("Size is now  {}", self.nodes.len());
         }
         f
     }
@@ -465,7 +474,7 @@ impl DDManager {
 
         if node.var() != VarID(0) {
             if node.low() == node.high() {
-                log::warn!("Trying to add non-reduced node: low==high");
+                // log::warn!("Trying to add non-reduced node: low==high");
             }
 
             // Assign new node ID

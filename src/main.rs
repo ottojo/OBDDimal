@@ -6,9 +6,9 @@ fn main() {
     env_logger::init();
 
     // let mut instance = dimacs::parse_dimacs("examples/cerf.dimacs");
-    let mut instance = dimacs::parse_dimacs("examples/sandwich.dimacs");
+    // let mut instance = dimacs::parse_dimacs("examples/sandwich.dimacs");
     // let mut instance = dimacs::parse_dimacs("examples/trivial.dimacs");
-    // let mut instance = dimacs::parse_dimacs("examples/trivial2.dimacs");
+    let mut instance = dimacs::parse_dimacs("examples/trivial3.dimacs");
     // let mut instance = dimacs::parse_dimacs("examples/berkeleydb.dimacs");
     // let mut instance = dimacs::parse_dimacs("examples/busybox.dimacs");
 
