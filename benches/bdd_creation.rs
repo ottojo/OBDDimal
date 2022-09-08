@@ -29,7 +29,7 @@ bdd_create_benchmark!(berkeleydb);
 
 fn bench_compare_dvo_berkeleydb(c: &mut Criterion) {
     let mut group = c.benchmark_group("BerkeleyDB_DVO");
-    group.sample_size(5);
+    group.sample_size(10);
 
     group.bench_function("Never", |b| {
         let cnf = dimacs::parse_dimacs(concat!("examples/berkeleydb.dimacs"));
