@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"type":[["HashMap","Type alias for a hashmap using the `fx` hash algorithm."],["HashSet","Type alias for a hashmap using the `fx` hash algorithm."]]};

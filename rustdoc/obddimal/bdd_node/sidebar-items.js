@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"struct":[["DDNode","Element of a BDD. Note that the Node contains its own ID. This may be set to zero until it has been assigned, and most importantly is not considered in hashing and equality testing."],["NodeID",""],["VarID",""]]};

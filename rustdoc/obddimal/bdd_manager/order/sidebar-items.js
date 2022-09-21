@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"fn":[["check_order","Checks if a specified variable ordering is valid for the CNF instance. Returns `OK(())` or `Err(\"error message\")`."],["order_to_layernames","Returns the variable order as list of VarID top to bottom"]]};
