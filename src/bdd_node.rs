@@ -20,6 +20,7 @@ pub struct DDNode {
     pub var: VarID,
     pub low: NodeID,
     pub high: NodeID,
+    pub visited_flag: bool,
 }
 
 /// Test equality of two nodes, not considering the ID!

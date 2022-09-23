@@ -78,6 +78,7 @@ impl DDManager {
                     var: a,
                     low: f_01_id,
                     high: f_11_id,
+                    visited_flag: false,
                 })
             };
             let new_else_id = if f_00_id == f_10_id {
@@ -88,6 +89,7 @@ impl DDManager {
                     var: a,
                     low: f_00_id,
                     high: f_10_id,
+                    visited_flag: false,
                 })
             };
 
@@ -99,6 +101,7 @@ impl DDManager {
                 var: b,
                 low: new_else_id,
                 high: new_then_id,
+                visited_flag: false,
             };
 
             log::debug!("new_f_node={:?}", new_f_node);
@@ -112,6 +115,7 @@ impl DDManager {
                 low: new_else_id,
                 high: new_then_id,
                 id: f_id,
+                visited_flag: false,
             });
             assert!(inserted);
 
@@ -122,6 +126,7 @@ impl DDManager {
                 low: f_0_id,
                 high: f_1_id,
                 id: f_id,
+                visited_flag: false,
             });
             assert!(removed);
 

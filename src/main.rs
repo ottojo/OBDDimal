@@ -24,7 +24,7 @@ fn main() {
         ),
     };
 
-    let (man, bdd) = DDManager::from_instance(
+    let (mut man, bdd) = DDManager::from_instance(
         &mut instance,
         order,
         Options::default().with_progressbars().with_dvo(dvo.into()),

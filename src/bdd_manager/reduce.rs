@@ -146,6 +146,7 @@ impl DDManager {
                 low: node.low,
                 high: node.high,
                 id: node.id,
+                visited_flag: false,
             });
         }
 
@@ -188,6 +189,7 @@ mod tests {
                 var: VarID(3),
                 low: NodeID(0),
                 high: NodeID(1),
+                visited_flag: false,
             },
         );
         man.var2nodes[3].insert(DDNode {
@@ -195,6 +197,7 @@ mod tests {
             var: VarID(3),
             low: NodeID(0),
             high: NodeID(1),
+            visited_flag: false,
         });
 
         // Node 3: Low=High=2
@@ -205,6 +208,7 @@ mod tests {
                 var: VarID(2),
                 low: NodeID(2),
                 high: NodeID(2),
+                visited_flag: false,
             },
         );
         man.var2nodes[2].insert(DDNode {
@@ -212,6 +216,7 @@ mod tests {
             low: NodeID(2),
             high: NodeID(2),
             id: NodeID(3),
+            visited_flag: false,
         });
 
         // Node 4 (f): Low=High=3
@@ -222,6 +227,7 @@ mod tests {
                 var: VarID(1),
                 low: NodeID(3),
                 high: NodeID(3),
+                visited_flag: false,
             },
         );
         man.var2nodes[1].insert(DDNode {
@@ -229,6 +235,7 @@ mod tests {
             low: NodeID(3),
             high: NodeID(3),
             id: NodeID(4),
+            visited_flag: false,
         });
 
         let f = NodeID(4);
@@ -261,6 +268,7 @@ mod tests {
                 var: VarID(3),
                 low: NodeID(0),
                 high: NodeID(1),
+                visited_flag: false,
             },
         );
         man.var2nodes[3].insert(DDNode {
@@ -268,6 +276,7 @@ mod tests {
             var: VarID(3),
             low: NodeID(0),
             high: NodeID(1),
+            visited_flag: false,
         });
 
         // Duplicate node 3: Low=0, High=1
@@ -278,6 +287,7 @@ mod tests {
                 var: VarID(3),
                 low: NodeID(0),
                 high: NodeID(1),
+                visited_flag: false,
             },
         );
         // (no unique-table entry)
@@ -290,6 +300,7 @@ mod tests {
                 var: VarID(2),
                 low: NodeID(1),
                 high: NodeID(2),
+                visited_flag: false,
             },
         );
         man.var2nodes[2].insert(DDNode {
@@ -297,6 +308,7 @@ mod tests {
             var: VarID(2),
             low: NodeID(1),
             high: NodeID(2),
+            visited_flag: false,
         });
 
         // Node 5 (f): Low=3, High=4
@@ -307,6 +319,7 @@ mod tests {
                 var: VarID(1),
                 low: NodeID(3),
                 high: NodeID(4),
+                visited_flag: false,
             },
         );
         man.var2nodes[1].insert(DDNode {
@@ -314,6 +327,7 @@ mod tests {
             var: VarID(1),
             low: NodeID(3),
             high: NodeID(4),
+            visited_flag: false,
         });
 
         let f = NodeID(5);
@@ -345,6 +359,7 @@ mod tests {
                 var: VarID(3),
                 low: NodeID(0),
                 high: NodeID(1),
+                visited_flag: false,
             },
         );
         man.var2nodes[3].insert(DDNode {
@@ -352,6 +367,7 @@ mod tests {
             var: VarID(3),
             low: NodeID(0),
             high: NodeID(1),
+            visited_flag: false,
         });
 
         // Duplicate node 3: Low=0, High=1
@@ -362,6 +378,7 @@ mod tests {
                 var: VarID(3),
                 low: NodeID(0),
                 high: NodeID(1),
+                visited_flag: false,
             },
         );
         // (no unique-table entry)
@@ -372,6 +389,7 @@ mod tests {
             var: VarID(2),
             low: NodeID(2),
             high: NodeID(2),
+            visited_flag: false,
         };
         man.nodes.insert(NodeID(4), node_4);
         man.var2nodes[2].insert(node_4);
@@ -382,6 +400,7 @@ mod tests {
             var: VarID(2),
             low: NodeID(3),
             high: NodeID(2),
+            visited_flag: false,
         };
         man.nodes.insert(NodeID(5), node_5);
         man.var2nodes[2].insert(node_5);
@@ -392,6 +411,7 @@ mod tests {
             var: VarID(1),
             low: NodeID(5),
             high: NodeID(4),
+            visited_flag: false,
         };
         man.nodes.insert(NodeID(6), node_6);
         man.var2nodes[1].insert(node_6);
@@ -421,6 +441,7 @@ mod tests {
             var: VarID(3),
             low: NodeID(0),
             high: NodeID(1),
+            visited_flag: false,
         };
         man.nodes.insert(NodeID(2), node_2);
         man.var2nodes[3].insert(node_2);
@@ -431,6 +452,7 @@ mod tests {
             var: VarID(3),
             low: NodeID(1),
             high: NodeID(0),
+            visited_flag: false,
         };
         man.nodes.insert(NodeID(3), node_3);
         man.var2nodes[3].insert(node_3);

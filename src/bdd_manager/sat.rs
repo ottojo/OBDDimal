@@ -63,32 +63,25 @@ impl DDManager {
         total
     }
 
-    pub fn count_active(&self, f: NodeID) -> u32 {
-        // We use HashMap<NodeID, ()> instead of HashSet<NodeID> to be able to use the .entry()
-        // API below. This turns out to be faster, since it avoids the double lookup if the
-        // ID is not yet known (!contains -> insert).
-        let mut nodes = HashMap::<NodeID, ()>::default();
-        nodes.reserve(self.nodes.len());
-
-        let mut stack = vec![f];
-        stack.reserve(self.nodes.len());
-
-        while !stack.is_empty() {
-            let x = stack.pop().unwrap();
-            let entry = nodes.entry(x);
-
-            match entry {
-                Occupied(_) => continue, // Node already counted
-                Vacant(vacant_entry) => {
-                    // Store node, add children to stack
-                    let node = self.nodes.get(&x).unwrap();
-                    stack.push(node.low);
-                    stack.push(node.high);
-                    vacant_entry.insert(());
-                }
+    fn count_mark(&mut self, f: NodeID) -> u32 {
+        let (high, low) = {
+            let mut node = self.nodes.get_mut(&f).unwrap();
+            if node.visited_flag {
+                return 0;
             }
+            node.visited_flag = true;
+            (node.high, node.low)
+        };
+        1 + self.count_mark(low) + self.count_mark(high)
+    }
+
+    pub fn count_active(&mut self, f: NodeID) -> u32 {
+        let cnt = self.count_mark(f);
+
+        for (_id, node) in self.nodes.iter_mut() {
+            node.visited_flag = false;
         }
 
-        nodes.len() as u32
+        cnt
     }
 }
