@@ -2,7 +2,10 @@
 
 #![allow(rustdoc::private_intra_doc_links)]
 
-use std::io::stdout;
+use std::{
+    io::stdout,
+    time::{SystemTime, UNIX_EPOCH},
+};
 
 use crossterm::{cursor, execute};
 use indicatif::ProgressBar;
@@ -175,6 +178,16 @@ impl DDManager {
             let var = VarID(v as u32);
             f = self.sift_single_var(var, max_increase, f);
             self.purge_retain(f);
+            /*
+            println!(
+                "[ {}, {} ],",
+                SystemTime::now()
+                    .duration_since(UNIX_EPOCH)
+                    .unwrap()
+                    .as_millis(),
+                self.nodes.len()
+            );
+            */
         }
         if_some!(bar, finish_and_clear());
 

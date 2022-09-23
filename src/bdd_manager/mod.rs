@@ -28,6 +28,7 @@ pub const ZERO: DDNode = DDNode {
     var: VarID(0),
     low: NodeID(0),
     high: NodeID(0),
+    visited_flag: false,
 };
 
 /// Terminal node "one"
@@ -36,6 +37,7 @@ pub const ONE: DDNode = DDNode {
     var: VarID(0),
     low: NodeID(1),
     high: NodeID(1),
+    visited_flag: false,
 };
 
 /// Bring ITE calls of the form
@@ -237,6 +239,7 @@ impl DDManager {
             var,
             low: NodeID(0),
             high: NodeID(1),
+            visited_flag: false,
         };
 
         if self.var2nodes.len() > (var.0 as usize) {
@@ -256,6 +259,7 @@ impl DDManager {
             var,
             low: NodeID(1),
             high: NodeID(0),
+            visited_flag: false,
         };
 
         if self.var2nodes.len() > (var.0 as usize) {
@@ -357,6 +361,7 @@ impl DDManager {
                     var: top,
                     low,
                     high,
+                    visited_flag: false,
                 };
 
                 let out = self.node_get_or_create(&node);
