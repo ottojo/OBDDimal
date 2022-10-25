@@ -46,6 +46,7 @@ console = "0.15.1"
 crossterm = "0.25.0"
 enum_dispatch = "0.3.8"
 fnv = "1.0.3"
+petgraph = "0.6.2"
 
 [dev-dependencies]
 criterion = { version = "0.3", features = ["html_reports"] }
