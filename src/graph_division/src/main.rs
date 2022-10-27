@@ -5,9 +5,8 @@ use bdd::dimacs::Instance;
 fn main() {
     let instance: Instance = dimacs::parse_dimacs("./../../examples/sandwich.dimacs");
     println!("variables = {}, clauses = {}", instance.no_variables, instance.no_clauses);
-    println!("{:?}", count_variable_occurences(&instance));
-    let adj = get_adjacency_matrix(&instance);
-    for i in &adj.1 { println!("{:?}", i); }
+    let nodes = count_variable_occurences(&instance);
+    get_candidates(&nodes, 0.4);
 }
 
 fn count_variable_occurences(instance: &Instance) -> Vec<i32> {
@@ -54,4 +53,18 @@ fn get_adjacency_matrix(instance: &Instance) -> (Vec<Vec<i32>>, Vec<Vec<i32>>) {
         }
     }
     (result, node_clauses)
+}
+
+fn get_candidates(metric: &Vec<i32>, percentage: f32) -> Vec<i32> {
+    let mut candidates: Vec<i32> = Vec::new();
+    let n = (percentage * metric.len() as f32) as i32;
+    println!("{}", n);
+
+    let metric_iterator = metric.iter().enumerate()/*.sort_by_key(|x| x.1)*/;
+    for a in metric_iterator { println!("{:?}", a)};
+    /*while candidates.len() <= n {
+
+    }*/
+
+    candidates
 }
