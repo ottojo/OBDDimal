@@ -2,7 +2,7 @@ extern crate obddimal as bdd;
 use bdd::dimacs;
 use bdd::dimacs::Instance;
 
-use std::any::type_name;
+use std::collections::HashMap;
 
 use petgraph::graph::{NodeIndex, UnGraph, Graph};
 use petgraph::algo::{dijkstra, min_spanning_tree};
@@ -14,22 +14,23 @@ fn main() {
     let instance: Instance = dimacs::parse_dimacs("./../../examples/sandwich.dimacs");
     println!("variables = {}, clauses = {}", instance.no_variables, instance.no_clauses);
     let nodes = count_variable_occurences(&instance);
-    let cand = get_candidates(nodes, 0.4);
+    //let cand = get_candidates(nodes, 0.4);
     let (matrix, node_clauses) = get_adjacency_matrix_and_nodes_clauses(&instance);
     graph_from_matrix(&matrix);
 }
 
-fn count_variable_occurences(instance: &Instance) -> Vec<i32> {
+fn count_variable_occurences(instance: &Instance) -> HashMap<i32, i32> {
     let mut occurrences = vec![0; (instance.no_variables + 1) as usize];
+    let mut var_occs = HashMap::new();
 
     for clause in &instance.clauses {
         for var in clause {
             let x = var.abs();
-            occurrences[x as usize] += 1;
+            let mut count = var_occs.entry(x).or_insert(0);
+            *count += 1;
         }
     }
-
-    return occurrences;
+    var_occs
 }
 
 fn delete_nodes(instance: &Instance, number: i32, candidates: Vec<i32>) -> (Vec<i32>, Vec<i32>) {
