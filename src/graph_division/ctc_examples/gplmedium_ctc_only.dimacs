@@ -1,0 +1,47 @@
+c 1 Connected
+c 2 Cycle
+c 3 DFS
+c 4 Directed
+c 5 DirectedOnlyVertices
+c 6 DirectedWithEdges
+c 7 DirectedWithNeighbors
+c 8 Gtp
+c 9 MSTKruskal
+c 10 MSTPrim
+c 11 Number
+c 12 OnlyVertices
+c 13 Src
+c 14 StrongC
+c 15 Undirected
+c 16 UndirectedOnlyVertices
+c 17 UndirectedWithEdges
+c 18 UndirectedWithNeighbors
+c 19 Weighted
+c 20 WeightedOnlyVertices
+c 21 WeightedWithEdges
+c 22 WeightedWithNeighbors
+c 23 WithEdges
+c 24 WithNeighbors
+p cnf 24 22
+8 -11 0
+-11 13 0
+-1 15 0
+-1 13 0
+4 -14 0
+3 -14 0
+-2 8 0
+-2 3 0
+-9 15 0
+-9 19 0
+-10 15 0
+-10 19 0
+-9 -10 0
+-12 -19 20 0
+-19 22 -24 0
+-19 21 -23 0
+-4 5 -12 0
+-4 7 -24 0
+-4 6 -23 0
+-12 -15 16 0
+-15 18 -24 0
+-15 17 -23 0

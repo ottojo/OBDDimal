@@ -14,14 +14,18 @@ fn main() {
     let instance: Instance = dimacs::parse_dimacs("./../../examples/sandwich.dimacs");
     println!("variables = {}, clauses = {}", instance.no_variables, instance.no_clauses);
     let nodes = count_variable_occurences(&instance);
-    //let cand = get_candidates(nodes, 0.4);
+    println!("{:?}", nodes);
+
+    //let cand = get_candidates(nodes.values().cloned().collect(), 0.4);
     let (matrix, node_clauses) = get_adjacency_matrix_and_nodes_clauses(&instance);
-    graph_from_matrix(&matrix);
+    let graph = graph_from_matrix(&matrix);
+
 }
 
 fn count_variable_occurences(instance: &Instance) -> HashMap<i32, i32> {
     let mut occurrences = vec![0; (instance.no_variables + 1) as usize];
     let mut var_occs = HashMap::new();
+    var_occs.insert(0, 0);
 
     for clause in &instance.clauses {
         for var in clause {
@@ -33,6 +37,7 @@ fn count_variable_occurences(instance: &Instance) -> HashMap<i32, i32> {
     var_occs
 }
 
+// TODO: Implement with graph
 fn delete_nodes(instance: &Instance, number: i32, candidates: Vec<i32>) -> (Vec<i32>, Vec<i32>) {
     let mut deleted_nodes = Vec::new();
     let mut affected_clauses = Vec::new();
@@ -89,12 +94,18 @@ fn get_candidates(metric: Vec<i32>, percentage: f32) -> Vec<i32> {
 
 fn graph_from_matrix(matrix: &Vec<Vec<i32>>) -> UnGraph::<i32, ()> {
     let mut edges: Vec<(u32, u32)> = Vec::new();
-    edges.push((5,6));
     let mut graph = Graph::new_undirected();
-    let edges2 = vec![(3,4), (4,5)];
-    graph.extend_with_edges(&[(1,2),(2,3)]);
+
+    // Weights are only used as labels for debugging using Graphviz, therefore should not be 
+    // interpreted as actual weights.
+    for i in 0..matrix.len() { graph.add_node(i as i32); }
+    for i in 0..matrix.len() {
+        for j in i..matrix[i].len() {
+            if matrix[i][j] > 0 { edges.push((i as u32, j as u32)); }
+        }
+    }
     graph.extend_with_edges(&edges);
-    println!("{:?}", Dot::with_config(&graph, &[Config::EdgeNoLabel]));
+    //println!("{:?}", Dot::with_config(&graph, &[Config::EdgeNoLabel]));
 
     graph
 }
