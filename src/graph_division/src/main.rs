@@ -17,8 +17,6 @@ fn main() {
     println!("{:?}", nodes);
 
     //let cand = get_candidates(nodes.values().cloned().collect(), 0.4);
-    let (matrix, node_clauses) = get_adjacency_matrix_and_nodes_clauses(&instance);
-    let graph = graph_from_matrix(&matrix);
 
 }
 
@@ -43,26 +41,6 @@ fn delete_nodes(instance: &Instance, number: i32, candidates: Vec<i32>) -> (Vec<
     let mut affected_clauses = Vec::new();
 
     (deleted_nodes, affected_clauses)
-}
-
-fn get_adjacency_matrix_and_nodes_clauses(instance: &Instance) -> (Vec<Vec<i32>>, Vec<Vec<i32>>) {
-    let n = instance.no_variables as usize;
-    let mut result: Vec<Vec<i32>> = vec![vec![0; n+1]; n+1];
-    let mut node_clauses: Vec<Vec<i32>> = vec![Vec::new(); n+1];
-    
-    for (i, clause) in instance.clauses.iter().enumerate() {
-        for (j, x) in clause.iter().enumerate() {
-            let a = x.abs() as usize;
-            let mut clause_vector = &mut node_clauses[a];
-            clause_vector.push(i as i32);
-            for y in &clause[j+1..] {
-                let b = y.abs() as usize;
-                result[a][b] += 1;
-                result[b][a] += 1;
-            }
-        }
-    }
-    (result, node_clauses)
 }
 
 fn get_candidates(metric: Vec<i32>, percentage: f32) -> Vec<i32> {
@@ -90,22 +68,4 @@ fn get_candidates(metric: Vec<i32>, percentage: f32) -> Vec<i32> {
     }
 
     candidates
-}
-
-fn graph_from_matrix(matrix: &Vec<Vec<i32>>) -> UnGraph::<i32, ()> {
-    let mut edges: Vec<(u32, u32)> = Vec::new();
-    let mut graph = Graph::new_undirected();
-
-    // Weights are only used as labels for debugging using Graphviz, therefore should not be 
-    // interpreted as actual weights.
-    for i in 0..matrix.len() { graph.add_node(i as i32); }
-    for i in 0..matrix.len() {
-        for j in i..matrix[i].len() {
-            if matrix[i][j] > 0 { edges.push((i as u32, j as u32)); }
-        }
-    }
-    graph.extend_with_edges(&edges);
-    //println!("{:?}", Dot::with_config(&graph, &[Config::EdgeNoLabel]));
-
-    graph
 }
