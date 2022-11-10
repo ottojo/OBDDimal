@@ -1,8 +1,10 @@
+#![allow(dead_code)]
+
 extern crate obddimal as bdd;
 use bdd::dimacs;
 use bdd::dimacs::Instance;
 
-use std::collections::HashMap;
+use divide::InstanceGraph;
 
 use petgraph::graph::{NodeIndex, UnGraph, Graph};
 use petgraph::algo::{dijkstra, min_spanning_tree};
@@ -12,35 +14,10 @@ use petgraph::Undirected;
 
 fn main() {
     let instance: Instance = dimacs::parse_dimacs("./../../examples/sandwich.dimacs");
-    println!("variables = {}, clauses = {}", instance.no_variables, instance.no_clauses);
-    let nodes = count_variable_occurences(&instance);
-    println!("{:?}", nodes);
-
-    //let cand = get_candidates(nodes.values().cloned().collect(), 0.4);
-
-}
-
-fn count_variable_occurences(instance: &Instance) -> HashMap<i32, i32> {
-    let mut occurrences = vec![0; (instance.no_variables + 1) as usize];
-    let mut var_occs = HashMap::new();
-    var_occs.insert(0, 0);
-
-    for clause in &instance.clauses {
-        for var in clause {
-            let x = var.abs();
-            let mut count = var_occs.entry(x).or_insert(0);
-            *count += 1;
-        }
-    }
-    var_occs
-}
-
-// TODO: Implement with graph
-fn delete_nodes(instance: &Instance, number: i32, candidates: Vec<i32>) -> (Vec<i32>, Vec<i32>) {
-    let mut deleted_nodes = Vec::new();
-    let mut affected_clauses = Vec::new();
-
-    (deleted_nodes, affected_clauses)
+        let mut sandwich_graph = InstanceGraph::new(&instance);
+        sandwich_graph.print_graph();
+        sandwich_graph.remove_nodes(vec![2, 9, 10]);
+        sandwich_graph.print_graph();
 }
 
 fn get_candidates(metric: Vec<i32>, percentage: f32) -> Vec<i32> {
