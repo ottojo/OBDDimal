@@ -4,20 +4,24 @@ extern crate obddimal as bdd;
 use bdd::dimacs;
 use bdd::dimacs::Instance;
 
-use divide::InstanceGraph;
+use graph_division::InstanceGraph;
+use graph_division::node_removal::NodeRemoval;
 
 use petgraph::graph::{NodeIndex, UnGraph, Graph};
 use petgraph::algo::{dijkstra, min_spanning_tree};
 use petgraph::data::FromElements;
 use petgraph::dot::{Dot, Config};
 use petgraph::Undirected;
+use petgraph::graph::EdgeReference;
+use petgraph::visit::EdgeRef;
 
 fn main() {
     let instance: Instance = dimacs::parse_dimacs("./../../examples/sandwich.dimacs");
         let mut sandwich_graph = InstanceGraph::new(&instance);
-        sandwich_graph.print_graph();
-        sandwich_graph.remove_nodes(vec![2, 9, 10]);
-        sandwich_graph.print_graph();
+        let edges = sandwich_graph.get_graph().edges(NodeIndex::new(8));
+        for i in edges {
+            println!("Source: {:?}", i.source());
+        }
 }
 
 fn get_candidates(metric: Vec<i32>, percentage: f32) -> Vec<i32> {
