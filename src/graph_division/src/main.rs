@@ -15,12 +15,13 @@ use petgraph::Undirected;
 use petgraph::graph::EdgeReference;
 use petgraph::visit::EdgeRef;
 
+// TODO: Create example?
 fn main() {
     let instance: Instance = dimacs::parse_dimacs("./../../examples/sandwich.dimacs");
-        let mut sandwich_graph = InstanceGraph::new(&instance);
+        let mut sandwich_graph = InstanceGraph::new(instance);
         let edges = sandwich_graph.get_graph().edges(NodeIndex::new(8));
         for i in edges {
-            println!("Source: {:?}", i.source());
+            println!("Target: {:?}", i.target().index());
         }
 }
 
