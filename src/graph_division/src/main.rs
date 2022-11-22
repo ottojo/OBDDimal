@@ -6,8 +6,8 @@ use graph_division::InstanceGraph;
 
 use petgraph::algo;
 
-// TODO: Create example?
 fn main() {
+    /* Create graph from sandwich example */
     let instance: Instance = dimacs::parse_dimacs("./../../examples/sandwich.dimacs");
     let mut sandwich_graph = InstanceGraph::new(instance);
     sandwich_graph.print_graph();

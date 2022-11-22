@@ -1,5 +1,7 @@
+#![allow(dead_code)]
+
 extern crate obddimal as bdd;
-use bdd::dimacs::{self, Instance};
+use bdd::dimacs::Instance;
 
 use node_removal::NodeRemoval;
 
@@ -8,11 +10,17 @@ use std::collections::{HashMap, HashSet};
 
 use petgraph::algo;
 use petgraph::dot::{Config, Dot};
-use petgraph::graph::{EdgeReference, Graph, NodeIndex, UnGraph};
+use petgraph::graph::{Graph, NodeIndex, UnGraph};
 use petgraph::visit::EdgeRef;
 
 pub mod node_removal;
 
+/// Represents a CNF formula from an Instance as graph. Each node refers
+/// to a variable in the CNF and there is an edge (u,v) iff there is at
+/// least 1 clause in which u and v appear together regardless if positive
+/// or as negated literals.
+/// Keeps track of the adjacency matrix and which variables occur in which
+/// clauses
 pub struct InstanceGraph {
     ins: Instance,
     adjacency: Vec<Vec<bool>>,
@@ -21,6 +29,7 @@ pub struct InstanceGraph {
 }
 
 impl InstanceGraph {
+    /// Creates an InstanceGraph from an Instance.
     pub fn new(instance: Instance) -> InstanceGraph {
         let adjacency_mat = Self::adjacency_matrix(&instance);
         let node_clauses = Self::nodes_in_clauses(&instance);
@@ -32,18 +41,29 @@ impl InstanceGraph {
         }
     }
 
+    /// Returns a reference to the original dimacs Instance.
     pub fn get_instance(&self) -> &Instance {
         &self.ins
     }
 
+    /// Returns a reference to the undirected CNF graph.
     pub fn get_graph(&self) -> &UnGraph<u32, ()> {
         &self.g
     }
 
+    /// Prints the graph for graphviz.
     pub fn print_graph(&self) {
         println!("{:?}", Dot::with_config(&self.g, &[Config::EdgeNoLabel]));
     }
 
+    /// Removes the nodes which occur in most clauses as variables in our CNF from our CNF graph.
+    ///
+    /// Takes the quota of most occurring nodes and removes at least as many nodes as the quota says
+    /// or at least 3. In case of a tie where there is a node being removed which has as many occurrences
+    /// as some other node which is not being removed because of the quota, all remaining nodes with the
+    /// same number of occurrences are being removed as well.
+    ///
+    /// If no quota is defined, we choose the top 10% of nodes.
     pub fn remove_top_occurring_nodes_by_quota(&mut self, quota: Option<f64>) -> Vec<NodeRemoval> {
         if self.get_instance().no_variables == 0 {
             return Vec::new();
@@ -66,6 +86,7 @@ impl InstanceGraph {
             last_occurrence = next_node.1;
             nodes_to_remove.push(next_node.0);
         }
+
         loop {
             let next_node = candidates.pop().unwrap();
             if next_node.1 < last_occurrence {
@@ -77,6 +98,14 @@ impl InstanceGraph {
         self.remove_nodes(nodes_to_remove)
     }
 
+    /// Removes the nodes which occur in most clauses as variables in our CNF from our CNF graph
+    /// until the number of components in our CNF graph reaches a given multiple.
+    /// If no multiple is defined, we choose a factor 10 by default. However the graph may not
+    /// reach this number of components and we return all nodes that can be removed and lead to
+    /// a growth in components.
+    ///
+    /// In case there is a tie of nodes with same occurrences after the target number of components
+    /// is achieved, all other nodes with same number of occurrences are being removed as well.
     pub fn remove_top_occurring_nodes_by_growth(
         &mut self,
         factor: Option<f64>,
@@ -97,7 +126,7 @@ impl InstanceGraph {
         let mut removed_nodes = Vec::new();
         let target = (algo::connected_components(&self.g) as f64 * fac).ceil() as usize;
         let mut last_occurrence = candidates.last().unwrap().1;
-        while algo::connected_components(&self.g) < target {
+        while algo::connected_components(&self.g) < target && !candidates.is_empty() {
             let next_node = candidates.pop().unwrap();
             last_occurrence = next_node.1;
             removed_nodes.push(self.remove_single_node(next_node.0));
@@ -187,7 +216,7 @@ impl InstanceGraph {
         for (i, clause) in instance.clauses.iter().enumerate() {
             for var in clause.iter() {
                 let a = var.abs() as u32;
-                let mut set = result.entry(a).or_insert(HashSet::new());
+                let set = result.entry(a).or_insert(HashSet::new());
                 set.insert(i as u32);
             }
         }
@@ -219,11 +248,12 @@ impl InstanceGraph {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use bdd::dimacs;
 
     #[test]
     fn test_clauses_of_sandwich() {
-        let instance: Instance = dimacs::parse_dimacs("./../../examples/sandwich.dimacs");
-        let mut sandwich_graph = InstanceGraph::new(instance);
+        let sandwich_graph =
+            InstanceGraph::new(dimacs::parse_dimacs("./../../examples/sandwich.dimacs"));
         for i in vec![1, 2, 3, 21] {
             assert!(sandwich_graph.node_in_clauses.get(&2).unwrap().contains(&i));
         }
@@ -231,8 +261,8 @@ mod tests {
 
     #[test]
     fn test_adjacency_matrix_of_sandwich() {
-        let instance: Instance = dimacs::parse_dimacs("./../../examples/sandwich.dimacs");
-        let mut sandwich_graph = InstanceGraph::new(instance);
+        let sandwich_graph =
+            InstanceGraph::new(dimacs::parse_dimacs("./../../examples/sandwich.dimacs"));
         assert!(sandwich_graph.adjacency[8][7]);
         assert!(sandwich_graph.adjacency[8][1]);
         assert!(sandwich_graph.adjacency[8][12]);
@@ -246,8 +276,8 @@ mod tests {
 
     #[test]
     fn test_remove_nodes_from_sandwich() {
-        let instance: Instance = dimacs::parse_dimacs("./../../examples/sandwich.dimacs");
-        let mut sandwich_graph = InstanceGraph::new(instance);
+        let mut sandwich_graph =
+            InstanceGraph::new(dimacs::parse_dimacs("./../../examples/sandwich.dimacs"));
         let removed_nodes = sandwich_graph.remove_nodes(vec![2, 9, 12]);
 
         assert_eq!(2, removed_nodes[0].removed_node);
@@ -301,8 +331,8 @@ mod tests {
 
     #[test]
     fn test_not_remove_isolated_nodes_from_sandwich() {
-        let instance: Instance = dimacs::parse_dimacs("./../../examples/sandwich.dimacs");
-        let mut sandwich_graph = InstanceGraph::new(instance);
+        let mut sandwich_graph =
+            InstanceGraph::new(dimacs::parse_dimacs("./../../examples/sandwich.dimacs"));
         let removed_nodes: HashSet<u32> = HashSet::from_iter(
             sandwich_graph
                 .remove_nodes(vec![2, 5, 16, 11])
@@ -318,8 +348,8 @@ mod tests {
 
     #[test]
     fn test_remove_top_occurring_nodes_by_quota_from_sandwich_default() {
-        let instance: Instance = dimacs::parse_dimacs("./../../examples/sandwich.dimacs");
-        let mut sandwich_graph = InstanceGraph::new(instance);
+        let mut sandwich_graph =
+            InstanceGraph::new(dimacs::parse_dimacs("./../../examples/sandwich.dimacs"));
         let removed_nodes: HashSet<u32> = HashSet::from_iter(
             sandwich_graph
                 .remove_top_occurring_nodes_by_quota(None)
@@ -334,8 +364,8 @@ mod tests {
 
     #[test]
     fn test_remove_top_occurring_nodes_by_quota_from_berkeleydb_five_percent() {
-        let instance: Instance = dimacs::parse_dimacs("./../../examples/berkeleydb.dimacs");
-        let mut berkeleydb_graph = InstanceGraph::new(instance);
+        let mut berkeleydb_graph =
+            InstanceGraph::new(dimacs::parse_dimacs("./../../examples/berkeleydb.dimacs"));
         let removed_nodes: HashSet<u32> = HashSet::from_iter(
             berkeleydb_graph
                 .remove_top_occurring_nodes_by_quota(Some(0.05))
@@ -350,8 +380,8 @@ mod tests {
 
     #[test]
     fn test_remove_top_occurring_nodes_by_quota_from_berkeleydb_twenty_percent() {
-        let instance: Instance = dimacs::parse_dimacs("./../../examples/berkeleydb.dimacs");
-        let mut berkeleydb_graph = InstanceGraph::new(instance);
+        let mut berkeleydb_graph =
+            InstanceGraph::new(dimacs::parse_dimacs("./../../examples/berkeleydb.dimacs"));
         let removed_nodes: HashSet<u32> = HashSet::from_iter(
             berkeleydb_graph
                 .remove_top_occurring_nodes_by_quota(Some(0.2))
@@ -378,8 +408,8 @@ mod tests {
 
     #[test]
     fn test_remove_top_occurring_nodes_from_berkeleydb_by_growth_default() {
-        let instance: Instance = dimacs::parse_dimacs("./../../examples/berkeleydb.dimacs");
-        let mut berkeleydb_graph = InstanceGraph::new(instance);
+        let mut berkeleydb_graph =
+            InstanceGraph::new(dimacs::parse_dimacs("./../../examples/berkeleydb.dimacs"));
         let removed_nodes: HashSet<u32> = HashSet::from_iter(
             berkeleydb_graph
                 .remove_top_occurring_nodes_by_growth(None)
@@ -398,8 +428,8 @@ mod tests {
 
     #[test]
     fn test_remove_top_occurring_from_berkeleydb_by_growth_factor20() {
-        let instance: Instance = dimacs::parse_dimacs("./../../examples/berkeleydb.dimacs");
-        let mut berkeleydb_graph = InstanceGraph::new(instance);
+        let mut berkeleydb_graph =
+            InstanceGraph::new(dimacs::parse_dimacs("./../../examples/berkeleydb.dimacs"));
         let removed_nodes: HashSet<u32> = HashSet::from_iter(
             berkeleydb_graph
                 .remove_top_occurring_nodes_by_growth(Some(20.0))
